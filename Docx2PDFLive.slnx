@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Docx2PDFLive.Core/Docx2PDFLive.Core.csproj" />
+  <Project Path="Docx2PDFLive.Setup/Docx2PDFLive.Setup.csproj" />
+  <Project Path="Docx2PDFLive.Tests/Docx2PDFLive.Tests.csproj" />
+  <Project Path="Docx2PDFLive.UI/Docx2PDFLive.UI.csproj" />
+</Solution>
