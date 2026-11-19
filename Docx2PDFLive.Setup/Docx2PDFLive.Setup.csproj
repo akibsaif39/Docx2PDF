@@ -11,11 +11,13 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\app.ico" />
     <EmbeddedResource Include="Resources\app_icon.png" />
+    <EmbeddedResource Include="..\Installer\Docx2PDF_Setup.msi" Link="Resources\Docx2PDF_Setup.msi" />
   </ItemGroup>
 
 </Project>

@@ -20,6 +20,7 @@ static class Program
         using var mutex = new Mutex(true, InstallerMutexName, out bool isNewInstance);
         if (!isNewInstance)
         {
+            // Another installer instance is already running; avoid clone dialogs
             return;
         }
 
@@ -36,7 +37,7 @@ static class Program
             Path.Combine(baseDir, "..", "Installer", "Docx2PDFLive_Setup.msi")
         };
 
-        var msiPath = msiCandidates.FirstOrDefault(File.Exists) ?? Path.Combine(baseDir, "Installer", "Docx2PDF_Setup.msi");
+        var msiPath = msiCandidates.FirstOrDefault(File.Exists);
 
         Application.Run(new SetupForm(msiPath));
     }
@@ -152,7 +153,8 @@ static class Program
 
 public class SetupForm : Form
 {
-    private readonly string _msiPath;
+    private const string ReleaseMsiUrl = "https://github.com/akibsaif39/Docx2PDF/releases/latest/download/Docx2PDF_Setup.msi";
+    private readonly string? _msiPath;
     private readonly bool _isLoInstalled;
     private Button _btnInstall = null!;
     private Button _btnCancel = null!;
@@ -160,7 +162,7 @@ public class SetupForm : Form
     private Label _statusLabel = null!;
     private bool _isInstalled = false;
 
-    public SetupForm(string msiPath)
+    public SetupForm(string? msiPath)
     {
         _msiPath = msiPath;
         _isLoInstalled = Program.CheckLibreOfficeInstalled();
@@ -179,6 +181,7 @@ public class SetupForm : Form
         MinimizeBox = true;
         BackColor = Color.White;
 
+        // Load embedded icon and PNG image
         var assembly = Assembly.GetExecutingAssembly();
         using var iconStream = assembly.GetManifestResourceStream("Docx2PDFLive.Setup.Resources.app.ico")
             ?? assembly.GetManifestResourceStream(assembly.GetManifestResourceNames().FirstOrDefault(n => n.EndsWith("app.ico", StringComparison.OrdinalIgnoreCase)) ?? "");
@@ -195,6 +198,7 @@ public class SetupForm : Form
             try { appImage = Image.FromStream(imgStream); } catch { }
         }
 
+        // Header Panel
         var headerPanel = new Panel
         {
             Left = 0,
@@ -253,6 +257,7 @@ public class SetupForm : Form
 
         Controls.Add(headerPanel);
 
+        // Status Card
         var cardPanel = new Panel
         {
             Left = 28,
@@ -312,6 +317,7 @@ public class SetupForm : Form
         cardPanel.Controls.Add(engineDesc);
         Controls.Add(cardPanel);
 
+        // Progress bar
         _progressBar = new ProgressBar
         {
             Left = 28,
@@ -323,6 +329,7 @@ public class SetupForm : Form
         };
         Controls.Add(_progressBar);
 
+        // Status Text
         _statusLabel = new Label
         {
             Text = "Ready to install Docx2PDF to Program Files.",
@@ -335,6 +342,7 @@ public class SetupForm : Form
         };
         Controls.Add(_statusLabel);
 
+        // Buttons
         _btnCancel = new Button
         {
             Text = "Cancel",
@@ -371,6 +379,7 @@ public class SetupForm : Form
     {
         if (_isInstalled)
         {
+            // Launch the installed app
             var installedExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Docx2PDF", "Docx2PDF.exe");
             if (!File.Exists(installedExe))
             {
@@ -386,19 +395,43 @@ public class SetupForm : Form
             return;
         }
 
-        if (!File.Exists(_msiPath))
+        _btnInstall.Enabled = false;
+        _btnCancel.Enabled = false;
+        _progressBar.Visible = true;
+        _statusLabel.ForeColor = Color.FromArgb(100, 116, 139);
+
+        string? targetMsi = _msiPath;
+
+        if (string.IsNullOrEmpty(targetMsi) || !File.Exists(targetMsi))
         {
+            _statusLabel.Text = "Preparing installation package...";
+            Application.DoEvents();
+            targetMsi = ExtractEmbeddedMsi();
+        }
+
+        if (string.IsNullOrEmpty(targetMsi) || !File.Exists(targetMsi))
+        {
+            _statusLabel.Text = "Downloading installer from GitHub...";
+            Application.DoEvents();
+            targetMsi = await DownloadMsiFromGitHubAsync();
+        }
+
+        if (string.IsNullOrEmpty(targetMsi) || !File.Exists(targetMsi))
+        {
+            _progressBar.Visible = false;
+            _statusLabel.Text = "Could not locate installer package.";
+            _statusLabel.ForeColor = Color.Red;
+            _btnInstall.Enabled = true;
+            _btnCancel.Enabled = true;
+
             MessageBox.Show(
-                $"Could not locate installer package:\n{_msiPath}\n\nPlease ensure Docx2PDF_Setup.msi is present in the Installer directory.",
+                "Could not locate or extract the Docx2PDF installer package.\n\nYou can download and run Docx2PDF_Setup.msi directly from the GitHub releases page.",
                 "Docx2PDF Setup",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
         }
 
-        _btnInstall.Enabled = false;
-        _btnCancel.Enabled = false;
-        _progressBar.Visible = true;
         _statusLabel.Text = "Installing Docx2PDF... Please wait.";
 
         try
@@ -408,7 +441,7 @@ public class SetupForm : Form
                 var psi = new ProcessStartInfo
                 {
                     FileName = "msiexec.exe",
-                    Arguments = $"/i \"{_msiPath}\"",
+                    Arguments = $"/i \"{targetMsi}\"",
                     UseShellExecute = true
                 };
                 using var p = Process.Start(psi);
@@ -432,6 +465,53 @@ public class SetupForm : Form
             _statusLabel.ForeColor = Color.Red;
             _btnInstall.Enabled = true;
             _btnCancel.Enabled = true;
+        }
+    }
+
+    private static string? ExtractEmbeddedMsi()
+    {
+        try
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var resourceName = assembly.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith("Docx2PDF_Setup.msi", StringComparison.OrdinalIgnoreCase));
+
+            if (resourceName == null) return null;
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null) return null;
+
+            var tempPath = Path.Combine(Path.GetTempPath(), "Docx2PDF_Setup.msi");
+            using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            stream.CopyTo(fileStream);
+
+            return tempPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task<string?> DownloadMsiFromGitHubAsync()
+    {
+        try
+        {
+            var tempPath = Path.Combine(Path.GetTempPath(), "Docx2PDF_Setup.msi");
+            using var client = new HttpClient();
+            client.Timeout = TimeSpan.FromMinutes(10);
+            using var response = await client.GetAsync(ReleaseMsiUrl, HttpCompletionOption.ResponseHeadersRead);
+            if (!response.IsSuccessStatusCode) return null;
+
+            using var stream = await response.Content.ReadAsStreamAsync();
+            using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await stream.CopyToAsync(fileStream);
+
+            return tempPath;
+        }
+        catch
+        {
+            return null;
         }
     }
 }
