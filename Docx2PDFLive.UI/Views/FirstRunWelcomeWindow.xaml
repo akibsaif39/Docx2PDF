@@ -1,0 +1,58 @@
+<Window x:Class="Docx2PDFLive.UI.Views.FirstRunWelcomeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Welcome to Docx2PDF" Height="380" Width="520"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="#0F172A"
+        WindowStyle="SingleBorderWindow"
+        Icon="/Resources/app_icon.png">
+    <Window.Resources>
+        <Style TargetType="Button" x:Key="PrimaryButtonStyle">
+            <Setter Property="Background" Value="#2563EB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="24,10"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,0,0,20">
+            <Image Source="/Resources/app_icon.png" Width="64" Height="64" HorizontalAlignment="Center" Margin="0,0,0,12"/>
+            <TextBlock Text="Welcome to Docx2PDF" FontSize="22" FontWeight="Bold" Foreground="#F8FAFC" HorizontalAlignment="Center"/>
+            <TextBlock Text="Created by Akib" FontSize="13" Foreground="#94A3B8" FontStyle="Italic" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- Description -->
+        <Border Grid.Row="1" Background="#1E293B" CornerRadius="8" Padding="20,16" Margin="0,0,0,20">
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="This app was made after GTA6 by Akib Hasan Saif."
+                           Foreground="#E2E8F0" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,8" TextAlignment="Center"/>
+                <TextBlock Text="Real-time background folder monitoring and DOCX to PDF conversion."
+                           Foreground="#94A3B8" FontSize="12" TextWrapping="Wrap" TextAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Button -->
+        <Button Grid.Row="2" Content="Get Started" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Center" Click="GetStartedButton_Click"/>
+    </Grid>
+</Window>
