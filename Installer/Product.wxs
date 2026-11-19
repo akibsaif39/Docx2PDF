@@ -1,0 +1,59 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Docx2PDF"
+           Manufacturer="Akib"
+           Version="1.0.0"
+           UpgradeCode="4C6F4B72-6893-4E9A-B7F1-3BC8F29A88F1"
+           Scope="perMachine">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPCOMMENTS" Value="Real-time DOCX to PDF converter created by Akib" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Docx2PDF">
+        <Component Id="MainExecutable" Guid="A73D5512-E6B2-4A73-9F01-7F620DBCC019" Bitness="always64">
+          <File Id="Docx2PDFExe" Source="..\publish\Docx2PDF.exe" KeyPath="yes" />
+        </Component>
+        <Component Id="AppIconComponent" Guid="B82E6623-F7C3-4B84-AF12-8E731ECDD020" Bitness="always64">
+          <File Id="AppIcoFile" Source="app.ico" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Docx2PDF">
+        <Component Id="ApplicationShortcut" Guid="C93F7734-08D4-4C95-BF23-9F842FDEE031">
+          <Shortcut Id="ApplicationStartMenuShortcut"
+                    Name="Docx2PDF"
+                    Description="Real-time DOCX to PDF converter created by Akib"
+                    Target="[#Docx2PDFExe]"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Icon="AppIcon" />
+          <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
+          <RegistryValue Root="HKCU" Key="Software\Akib\Docx2PDF" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcutComponent" Guid="D04A8845-19E5-4DA6-C034-A0953EEFF042">
+        <Shortcut Id="ApplicationDesktopShortcut"
+                  Name="Docx2PDF"
+                  Description="Real-time DOCX to PDF converter created by Akib"
+                  Target="[#Docx2PDFExe]"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon" />
+        <RegistryValue Root="HKCU" Key="Software\Akib\Docx2PDF" Name="desktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature Id="Main">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="AppIconComponent" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="DesktopShortcutComponent" />
+    </Feature>
+  </Package>
+</Wix>
