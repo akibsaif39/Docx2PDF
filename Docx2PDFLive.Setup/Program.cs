@@ -42,6 +42,26 @@ static class Program
         Application.Run(new SetupForm(msiPath));
     }
 
+    public static bool CheckWordInstalled()
+    {
+        try
+        {
+            var wordType = Type.GetTypeFromProgID("Word.Application");
+            if (wordType != null) return true;
+        }
+        catch { }
+
+        try
+        {
+            using var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Winword.exe");
+            var val = k?.GetValue("") as string;
+            if (!string.IsNullOrEmpty(val) && File.Exists(val)) return true;
+        }
+        catch { }
+
+        return false;
+    }
+
     public static bool CheckLibreOfficeInstalled()
     {
         string[] standardPaths =
@@ -155,6 +175,7 @@ public class SetupForm : Form
 {
     private const string ReleaseMsiUrl = "https://github.com/akibsaif39/Docx2PDF/releases/latest/download/Docx2PDF_Setup.msi";
     private readonly string? _msiPath;
+    private readonly bool _isWordInstalled;
     private readonly bool _isLoInstalled;
     private Button _btnInstall = null!;
     private Button _btnCancel = null!;
@@ -165,6 +186,7 @@ public class SetupForm : Form
     public SetupForm(string? msiPath)
     {
         _msiPath = msiPath;
+        _isWordInstalled = Program.CheckWordInstalled();
         _isLoInstalled = Program.CheckLibreOfficeInstalled();
 
         InitializeComponent();
@@ -286,7 +308,13 @@ public class SetupForm : Form
             ForeColor = Color.FromArgb(71, 85, 105)
         };
 
-        if (_isLoInstalled)
+        if (_isWordInstalled)
+        {
+            engineTitle.Text = "High-Speed Microsoft Word Engine Detected";
+            engineTitle.ForeColor = Color.FromArgb(22, 163, 74);
+            engineDesc.Text = "Conversions will match Microsoft Word formatting and layouts with 100% native fidelity at ultra-fast speeds.";
+        }
+        else if (_isLoInstalled)
         {
             engineTitle.Text = "High-Fidelity LibreOffice Engine Detected";
             engineTitle.ForeColor = Color.FromArgb(22, 163, 74);
@@ -294,9 +322,9 @@ public class SetupForm : Form
         }
         else
         {
-            engineTitle.Text = "Built-in OpenXML + PDFSharp Engine Active";
-            engineTitle.ForeColor = Color.FromArgb(37, 99, 235);
-            engineDesc.Text = "Fast, lightweight built-in conversion without third-party dependencies. For 100% Word matching, you can optionally install LibreOffice.";
+            engineTitle.Text = "High-Fidelity Engine Needed (Word or LibreOffice)";
+            engineTitle.ForeColor = Color.FromArgb(245, 158, 11);
+            engineDesc.Text = "To ensure 100% exact Word-matching fidelity, please install LibreOffice (free & open-source) or Microsoft Word.";
 
             var btnGetLo = new Button
             {

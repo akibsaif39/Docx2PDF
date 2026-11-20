@@ -5,7 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:Docx2PDFLive.UI.ViewModels"
         mc:Ignorable="d"
-        Title="Docx2PDF" Height="620" Width="920"
+        Title="Docx2PDF"
+        Height="620" Width="980"
         MinHeight="450" MinWidth="750"
         WindowStartupLocation="CenterScreen"
         Background="#0F172A"
@@ -23,296 +24,320 @@
             <Setter Property="Foreground" Value="#F1F5F9"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="#334155"/>
-            <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#334155"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#475569"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#0F172A"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#334155"/>
-                    <Setter Property="BorderBrush" Value="#475569"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
-        <Style x:Key="PrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
+        <Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
             <Setter Property="Background" Value="#2563EB"/>
             <Setter Property="BorderBrush" Value="#3B82F6"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#1D4ED8"/>
-                    <Setter Property="BorderBrush" Value="#60A5FA"/>
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1D4ED8"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1E40AF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
+
+        <!-- Status Badge Style converter/template -->
+        <DataTemplate x:Key="StatusCellTemplate">
+            <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding StatusDisplay}" Value="Synced">
+                                <Setter Property="Background" Value="#14532D"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding StatusDisplay}" Value="Converting...">
+                                <Setter Property="Background" Value="#1E3A8A"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding StatusDisplay}" Value="Queued">
+                                <Setter Property="Background" Value="#713F12"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding StatusDisplay}" Value="Error">
+                                <Setter Property="Background" Value="#7F1D1D"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock Text="{Binding StatusDisplay}" FontSize="11" FontWeight="SemiBold">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding StatusDisplay}" Value="Synced">
+                                    <Setter Property="Foreground" Value="#4ADE80"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding StatusDisplay}" Value="Converting...">
+                                    <Setter Property="Foreground" Value="#60A5FA"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding StatusDisplay}" Value="Queued">
+                                    <Setter Property="Foreground" Value="#FACC15"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding StatusDisplay}" Value="Error">
+                                    <Setter Property="Foreground" Value="#F87171"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Border>
+        </DataTemplate>
     </Window.Resources>
 
-    <Grid Margin="20">
+    <Grid>
         <Grid.RowDefinitions>
+            <!-- Header -->
             <RowDefinition Height="Auto"/>
+            <!-- Action Toolbar & Watched Path -->
             <RowDefinition Height="Auto"/>
+            <!-- Live Status Grid -->
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
+            <!-- Footer & Credits -->
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Row 0: Header Section -->
-        <Grid Grid.Row="0" Margin="0,0,0,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <!-- App Title Card -->
-            <Border Grid.Column="0" Background="#1E293B" CornerRadius="8" Padding="14,10" Margin="0,0,10,0">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Image Source="/Resources/app_icon.png" Width="36" Height="36" Margin="0,0,12,0"/>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Docx2PDF" FontSize="20" FontWeight="Bold" Foreground="#F1F5F9" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-
-            <!-- Engine & Status Badge -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <Border Background="#1E293B" CornerRadius="6" Padding="12,8" Margin="0,0,8,0">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Engine: " Foreground="#94A3B8" FontSize="12"/>
-                        <TextBlock Text="{Binding EngineStatus}" Foreground="#38BDF8" FontWeight="SemiBold" FontSize="12"/>
-                    </StackPanel>
-                </Border>
-                <Border Background="#1E293B" CornerRadius="6" Padding="12,8">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="8" Height="8" Margin="0,0,6,0">
-                            <Ellipse.Style>
-                                <Style TargetType="Ellipse">
-                                    <Setter Property="Fill" Value="#EF4444"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsWatching}" Value="True">
-                                            <Setter Property="Fill" Value="#22C55E"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Ellipse.Style>
-                        </Ellipse>
-                        <TextBlock Text="{Binding WatchingStatusText}" Foreground="#F1F5F9" FontSize="12" FontWeight="Medium"/>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </Grid>
-
-        <!-- Row 1: Folder Selection & Action Controls -->
-        <Border Grid.Row="1" Background="#1E293B" CornerRadius="8" Padding="14" Margin="0,0,0,16">
+        <!-- HEADER -->
+        <Border Grid.Row="0" Background="#1E293B" BorderBrush="#334155" BorderThickness="0,0,0,1" Padding="18,12">
             <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-                <!-- Optional LibreOffice Download Banner -->
-                <Border Grid.Row="0"
-                        Visibility="{Binding IsLibreOfficeMissing, Converter={StaticResource BoolToVisConverter}}"
-                        Background="#261E35"
-                        BorderBrush="#7C3AED"
-                        BorderThickness="1"
-                        CornerRadius="6"
-                        Padding="10,8"
-                        Margin="0,0,0,10">
+                <!-- Logo & Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Image Source="/Resources/app_icon.png" Width="36" Height="36" Margin="0,0,12,0"/>
+                    <TextBlock Text="Docx2PDF" FontSize="19" FontWeight="Bold" Foreground="#F8FAFC" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Top Right About Button -->
+                <Button Grid.Column="2"
+                        Content="About / Credits"
+                        Style="{StaticResource ActionButtonStyle}"
+                        Command="{Binding OpenAboutCommand}"
+                        Padding="10,6"
+                        FontSize="12"/>
+            </Grid>
+        </Border>
+
+        <!-- TOOLBAR & WATCHED PATH BANNER -->
+        <Border Grid.Row="1" Background="#0F172A" Padding="18,12,18,8">
+            <StackPanel>
+                <!-- Buttons Row -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <Button Content="📁 Select Folder"
+                            Style="{StaticResource PrimaryActionButtonStyle}"
+                            Command="{Binding SelectFolderCommand}"
+                            Margin="0,0,10,0"/>
+
+                    <Button Style="{StaticResource ActionButtonStyle}"
+                            Command="{Binding PauseResumeCommand}"
+                            Margin="0,0,10,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding PauseResumeIcon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding PauseResumeText}"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Content="🔄 Resync All"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Command="{Binding ResyncAllCommand}"
+                            Margin="0,0,10,0"/>
+
+                    <Button Content="↗ Open in Explorer"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Command="{Binding OpenFolderInExplorerCommand}"/>
+                </StackPanel>
+
+                <!-- Active High-Fidelity Engine Indicator -->
+                <Border Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="6"
+                        Padding="12,7" Margin="0,0,0,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0"
-                                   VerticalAlignment="Center"
-                                   Foreground="#DDD6FE"
-                                   FontSize="12">
-                            <Run FontWeight="Bold" Text="Notice: "/>
-                            <Run Text="LibreOffice was not detected. Built-in OpenXML is active. Install LibreOffice for 100% Word-matching layout."/>
-                        </TextBlock>
-                        <Button Grid.Column="1"
-                                Command="{Binding GetLibreOfficeCommand}"
-                                Content="Get LibreOffice"
-                                Background="#7C3AED"
-                                Foreground="White"
-                                FontSize="11"
-                                FontWeight="SemiBold"
-                                Padding="10,4"
-                                Margin="10,0,0,0"
-                                Cursor="Hand">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                </ControlTemplate>
-                            </Button.Template>
-                        </Button>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="⚡" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Active Conversion Engine: " Foreground="#94A3B8" FontSize="11.5" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding ActiveEngineDescription}" FontWeight="SemiBold" Foreground="#38BDF8" FontSize="11.5" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="100% High Fidelity" Foreground="#10B981" FontSize="11" FontWeight="Medium" VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
 
-                <!-- Main Folder Bar -->
-                <Grid Grid.Row="1">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <!-- Folder Path Box -->
-                    <Border Grid.Column="0" Background="#0F172A" CornerRadius="6" BorderBrush="#334155" BorderThickness="1" Padding="10,6" Margin="0,0,10,0">
-                        <TextBlock Text="{Binding SelectedFolderDisplay}" Foreground="#94A3B8" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                    </Border>
-
-                    <!-- Select Folder Button -->
-                    <Button Grid.Column="1" Command="{Binding SelectFolderCommand}" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Select Folder" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-
-                    <!-- Pause / Resume Button -->
-                    <Button Grid.Column="2" Command="{Binding PauseResumeCommand}" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding PauseResumeIcon}" Margin="0,0,6,0"/>
-                            <TextBlock Text="{Binding PauseResumeButtonText}"/>
-                        </StackPanel>
-                    </Button>
-
-                    <!-- Force Re-convert Button -->
-                    <Button Grid.Column="3" Command="{Binding ForceReconvertAllCommand}" Style="{StaticResource ActionButtonStyle}">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="↻" FontSize="14" Margin="0,0,6,0"/>
-                            <TextBlock Text="Re-convert All"/>
-                        </StackPanel>
-                    </Button>
-                </Grid>
-            </Grid>
+                <!-- Watched Folder Path Display -->
+                <Border Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="6" Padding="12,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Watching Folder:" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,8,0" FontSize="12"/>
+                        <TextBlock Grid.Column="1" Text="{Binding WatchedPath}" Foreground="#38BDF8" TextTrimming="CharacterEllipsis" FontSize="12"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
         </Border>
 
-        <!-- Row 2: Queue & History DataGrid -->
-        <Border Grid.Row="2" Background="#1E293B" CornerRadius="8" Padding="1" Margin="0,0,0,12">
-            <DataGrid ItemsSource="{Binding Items}"
+        <!-- LIVE STATUS LIST -->
+        <Border Grid.Row="2" Margin="18,4,18,8" Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="6">
+            <DataGrid ItemsSource="{Binding ConversionItems}"
                       AutoGenerateColumns="False"
+                      IsReadOnly="True"
                       CanUserAddRows="False"
                       CanUserDeleteRows="False"
-                      IsReadOnly="True"
                       Background="Transparent"
-                      RowBackground="#1E293B"
-                      AlternatingRowBackground="#162032"
-                      Foreground="#F1F5F9"
                       BorderThickness="0"
                       GridLinesVisibility="Horizontal"
                       HorizontalGridLinesBrush="#334155"
                       HeadersVisibility="Column"
-                      SelectionMode="Single"
-                      RowHeight="36">
+                      RowBackground="#1E293B"
+                      AlternatingRowBackground="#172033"
+                      Foreground="#E2E8F0"
+                      FontSize="12.5"
+                      RowHeight="32">
 
+                <!-- Header Style -->
                 <DataGrid.ColumnHeaderStyle>
                     <Style TargetType="DataGridColumnHeader">
                         <Setter Property="Background" Value="#0F172A"/>
                         <Setter Property="Foreground" Value="#94A3B8"/>
                         <Setter Property="FontWeight" Value="SemiBold"/>
                         <Setter Property="FontSize" Value="12"/>
-                        <Setter Property="Padding" Value="12,8"/>
+                        <Setter Property="Padding" Value="10,8"/>
                         <Setter Property="BorderThickness" Value="0,0,0,1"/>
                         <Setter Property="BorderBrush" Value="#334155"/>
                     </Style>
                 </DataGrid.ColumnHeaderStyle>
 
-                <DataGrid.Columns>
-                    <!-- File Name / Relative Path -->
-                    <DataGridTextColumn Header="Document" Binding="{Binding RelativePath}" Width="3*" ElementStyle="{StaticResource CellStyleLeft}"/>
+                <!-- Cell Style -->
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Padding" Value="10,0"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="DataGridCell">
+                                    <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </DataGrid.CellStyle>
 
-                    <!-- Status Badge Column -->
-                    <DataGridTemplateColumn Header="Status" Width="120">
+                <DataGrid.Columns>
+                    <!-- Relative File Path -->
+                    <DataGridTextColumn Header="Document (Relative Path)"
+                                        Binding="{Binding RelativePath}"
+                                        Width="*"
+                                        ElementStyle="{StaticResource {x:Type TextBlock}}"/>
+
+                    <!-- Conversion Engine -->
+                    <DataGridTextColumn Header="Engine"
+                                        Binding="{Binding Engine}"
+                                        Width="140"
+                                        ElementStyle="{StaticResource {x:Type TextBlock}}"/>
+
+                    <!-- Live Status Badge -->
+                    <DataGridTemplateColumn Header="Status"
+                                            CellTemplate="{StaticResource StatusCellTemplate}"
+                                            Width="110"/>
+
+                    <!-- Timestamp -->
+                    <DataGridTextColumn Header="Time"
+                                        Binding="{Binding Timestamp}"
+                                        Width="85"
+                                        ElementStyle="{StaticResource {x:Type TextBlock}}"/>
+
+                    <!-- Error Details -->
+                    <DataGridTemplateColumn Header="Error / Details" Width="240">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Border CornerRadius="4" Padding="8,3" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Status}" Value="Synced">
-                                                    <Setter Property="Background" Value="#052E16"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Converting">
-                                                    <Setter Property="Background" Value="#172554"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Queued">
-                                                    <Setter Property="Background" Value="#31135E"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Error">
-                                                    <Setter Property="Background" Value="#450A0A"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Status}" Value="Pending">
-                                                    <Setter Property="Background" Value="#1E293B"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                    <TextBlock Text="{Binding Status}" FontSize="12" FontWeight="SemiBold">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Status}" Value="Synced">
-                                                        <Setter Property="Foreground" Value="#4ADE80"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="Converting">
-                                                        <Setter Property="Foreground" Value="#60A5FA"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="Queued">
-                                                        <Setter Property="Foreground" Value="#C084FC"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="Error">
-                                                        <Setter Property="Foreground" Value="#F87171"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="Pending">
-                                                        <Setter Property="Foreground" Value="#94A3B8"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Border>
+                                <TextBlock Text="{Binding ErrorMessage}"
+                                           Foreground="#F87171"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding ErrorMessage}"/>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-
-                    <!-- Engine Used -->
-                    <DataGridTextColumn Header="Engine" Binding="{Binding Engine}" Width="150" ElementStyle="{StaticResource CellStyleMuted}"/>
-
-                    <!-- Time -->
-                    <DataGridTextColumn Header="Time" Binding="{Binding Timestamp}" Width="90" ElementStyle="{StaticResource CellStyleMuted}"/>
-
-                    <!-- Error / Info Column -->
-                    <DataGridTextColumn Header="Details" Binding="{Binding ErrorMessage}" Width="2*" ElementStyle="{StaticResource CellStyleError}"/>
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
 
-        <!-- Row 3: Status Summary Bar -->
-        <Border Grid.Row="3" Background="#1E293B" CornerRadius="6" Padding="12,8" Margin="0,0,0,6">
+        <!-- FOOTER & CREATOR CREDIT -->
+        <Border Grid.Row="3" Background="#0F172A" BorderBrush="#1E293B" BorderThickness="0,1,0,0" Padding="18,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding StatusSummary}" Foreground="#94A3B8" FontSize="12" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="Created by Akib" Foreground="#475569" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"/>
+
+                <!-- Left Status Summary -->
+                <TextBlock Grid.Column="0"
+                           Text="{Binding StatusSummary}"
+                           FontSize="12"
+                           Foreground="#94A3B8"
+                           VerticalAlignment="Center"/>
+
+                <!-- Right Subtle Creator Credit -->
+                <TextBlock Grid.Column="1"
+                           Text="Created by Akib"
+                           FontSize="11.5"
+                           FontWeight="Medium"
+                           Foreground="#64748B"
+                           VerticalAlignment="Center"/>
             </Grid>
         </Border>
     </Grid>

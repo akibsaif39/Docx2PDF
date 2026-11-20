@@ -1,5 +1,8 @@
 using System.Threading;
 using System.Windows;
+using Docx2PDFLive.Core.Interop;
+using Docx2PDFLive.Core.Services;
+using Docx2PDFLive.UI.Views;
 using WpfApplication = System.Windows.Application;
 
 namespace Docx2PDFLive.UI;
@@ -31,6 +34,7 @@ public partial class App : WpfApplication
 
         if (!isNewInstance)
         {
+            // Signal running primary instance to bring its window to the foreground
             try
             {
                 using var wakeEvent = EventWaitHandle.OpenExisting(EventName);
@@ -38,6 +42,7 @@ public partial class App : WpfApplication
             }
             catch { }
 
+            // Immediately exit the duplicate clone instance
             Shutdown();
             return;
         }
@@ -46,6 +51,7 @@ public partial class App : WpfApplication
         {
             _bringToFrontEvent = new EventWaitHandle(false, EventResetMode.AutoReset, EventName);
 
+            // Register background listener on threadpool to wake up main window
             _registeredWait = ThreadPool.RegisterWaitForSingleObject(
                 _bringToFrontEvent,
                 (state, timedOut) =>
@@ -63,6 +69,29 @@ public partial class App : WpfApplication
                 false);
         }
         catch { }
+
+        try
+        {
+            // Initialize Windows Job Object with KILL_ON_JOB_CLOSE to guarantee zero ghost processes
+            JobObjectManager.InitializeGlobalJobObject();
+        }
+        catch { }
+
+        // Mandatory prerequisite check: User must have Microsoft Word or LibreOffice
+        var engines = OfficeEngineDetector.GetAvailableEngines();
+        if (engines == OfficeEngineType.None)
+        {
+            var prereqModal = new PrerequisiteCheckWindow();
+            var result = prereqModal.ShowDialog();
+
+            OfficeEngineDetector.ResetCache();
+            if (result != true || OfficeEngineDetector.GetAvailableEngines() == OfficeEngineType.None)
+            {
+                // Engine requirement was not satisfied; close application without opening main window
+                Shutdown();
+                return;
+            }
+        }
 
         base.OnStartup(e);
 
