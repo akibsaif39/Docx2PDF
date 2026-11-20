@@ -44,6 +44,9 @@ public class WarmWordConverter : IConverter, IDisposable, IAsyncDisposable
     {
         var sw = Stopwatch.StartNew();
 
+        docxPath = Path.GetFullPath(docxPath);
+        pdfPath = Path.GetFullPath(pdfPath);
+
         if (!File.Exists(docxPath))
         {
             return ConversionResult.Fail(Name, $"Source DOCX file not found: {docxPath}");
@@ -215,7 +218,8 @@ public class WarmWordConverter : IConverter, IDisposable, IAsyncDisposable
 
         try
         {
-            var wordType = Type.GetTypeFromProgID("Word.Application");
+            var wordType = Type.GetTypeFromProgID("Word.Application")
+                ?? Type.GetTypeFromCLSID(new Guid("000209FF-0000-0000-C000-000000000046"));
             if (wordType == null)
             {
                 throw new InvalidOperationException("Microsoft Word is not registered on this system.");

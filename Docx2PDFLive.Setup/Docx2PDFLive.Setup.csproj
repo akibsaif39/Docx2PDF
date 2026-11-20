@@ -15,6 +15,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Docx2PDFLive.Core\Docx2PDFLive.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Resources\app.ico" />
     <EmbeddedResource Include="Resources\app_icon.png" />
     <EmbeddedResource Include="..\Installer\Docx2PDF_Setup.msi" Link="Resources\Docx2PDF_Setup.msi" />

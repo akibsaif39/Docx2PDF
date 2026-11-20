@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using Docx2PDFLive.Core.Services;
 
 namespace Docx2PDFLive.Setup;
 
@@ -44,51 +45,12 @@ static class Program
 
     public static bool CheckWordInstalled()
     {
-        try
-        {
-            var wordType = Type.GetTypeFromProgID("Word.Application");
-            if (wordType != null) return true;
-        }
-        catch { }
-
-        try
-        {
-            using var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Winword.exe");
-            var val = k?.GetValue("") as string;
-            if (!string.IsNullOrEmpty(val) && File.Exists(val)) return true;
-        }
-        catch { }
-
-        return false;
+        return OfficeEngineDetector.IsWordInstalled(out _);
     }
 
     public static bool CheckLibreOfficeInstalled()
     {
-        string[] standardPaths =
-        [
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "LibreOffice", "program", "soffice.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "LibreOffice", "program", "soffice.exe"),
-            @"C:\Program Files\LibreOffice\program\soffice.exe",
-            @"C:\Program Files (x86)\LibreOffice\program\soffice.exe"
-        ];
-
-        foreach (var p in standardPaths)
-        {
-            if (File.Exists(p)) return true;
-        }
-
-        try
-        {
-            using var k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\LibreOffice\LibreOffice");
-            var val = k?.GetValue("Path") as string;
-            if (!string.IsNullOrEmpty(val) && File.Exists(Path.Combine(val, "program", "soffice.exe")))
-            {
-                return true;
-            }
-        }
-        catch { }
-
-        return false;
+        return OfficeEngineDetector.IsLibreOfficeInstalled(out _);
     }
 
     public static void DownloadAndInstallLibreOffice(IWin32Window parent)
