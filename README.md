@@ -34,7 +34,7 @@
 
 ### Installation
 1. Go to the [Releases](https://github.com/akibsaif39/Docx2PDF/releases) section.
-2. Download **`Docx2PDF_Install.exe`** (or `Docx2PDF_Setup.msi`).
+2. Download **`Docx2PDF_Install.exe`**.
 3. Run the installer and launch **Docx2PDF**.
 
 ### Requirements
