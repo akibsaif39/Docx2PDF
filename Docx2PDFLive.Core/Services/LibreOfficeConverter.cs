@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using Docx2PDFLive.Core.Interop;
 
 namespace Docx2PDFLive.Core.Services;
 
@@ -7,38 +8,62 @@ public class LibreOfficeConverter : IConverter
 {
     private readonly string _sofficePath;
     private readonly TimeSpan _timeout;
+    private static readonly string PersistentProfileDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Docx2PDF",
+        "LOProfile");
 
-    public string Name => "LibreOffice Headless";
+    public string Name => "LibreOffice";
 
-    public LibreOfficeConverter(string? sofficePath = null, TimeSpan? timeout = null)
+    public LibreOfficeConverter(string? customSofficePath = null, TimeSpan? timeout = null)
     {
-        if (!string.IsNullOrEmpty(sofficePath) && File.Exists(sofficePath))
-        {
-            _sofficePath = sofficePath;
-        }
-        else if (LibreOfficeDetector.IsAvailable(out var detectedPath))
-        {
-            _sofficePath = detectedPath;
-        }
-        else
-        {
-            throw new FileNotFoundException("LibreOffice soffice.exe was not found on this machine.");
-        }
-
-        _timeout = timeout ?? TimeSpan.FromSeconds(60);
+        _sofficePath = !string.IsNullOrEmpty(customSofficePath)
+            ? customSofficePath
+            : (LibreOfficeDetector.FindSofficeExecutable() ?? "soffice.exe");
+        _timeout = timeout ?? TimeSpan.FromSeconds(35);
     }
 
     public async Task<ConversionResult> ConvertAsync(string docxPath, string pdfPath, CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
 
-        var outDir = Path.GetDirectoryName(Path.GetFullPath(pdfPath));
-        if (string.IsNullOrEmpty(outDir)) outDir = Directory.GetCurrentDirectory();
+        if (!File.Exists(docxPath))
+        {
+            return ConversionResult.Fail(Name, $"Source DOCX file not found: {docxPath}");
+        }
 
-        var docxFileNameNoExt = Path.GetFileNameWithoutExtension(docxPath);
-        var generatedPdfPath = Path.Combine(outDir, docxFileNameNoExt + ".pdf");
+        var outDir = Path.GetDirectoryName(pdfPath);
+        if (string.IsNullOrEmpty(outDir))
+        {
+            outDir = Path.GetDirectoryName(docxPath) ?? Directory.GetCurrentDirectory();
+        }
 
-        var args = $"--headless --convert-to pdf:writer_pdf_Export \"{Path.GetFullPath(docxPath)}\" --outdir \"{outDir}\"";
+        if (!Directory.Exists(outDir))
+        {
+            Directory.CreateDirectory(outDir);
+        }
+
+        // Expected output path produced by LibreOffice
+        var expectedPdfName = Path.GetFileNameWithoutExtension(docxPath) + ".pdf";
+        var generatedPdfPath = Path.Combine(outDir, expectedPdfName);
+
+        // Delete any existing stale PDF file before starting to ensure freshness
+        try
+        {
+            if (File.Exists(generatedPdfPath))
+            {
+                File.Delete(generatedPdfPath);
+            }
+        }
+        catch { }
+
+        if (!Directory.Exists(PersistentProfileDir))
+        {
+            Directory.CreateDirectory(PersistentProfileDir);
+        }
+        var profileUri = "file:///" + PersistentProfileDir.Replace('\\', '/');
+
+        var args = $"-env:UserInstallation=\"{profileUri}\" --headless --convert-to pdf \"{docxPath}\" --outdir \"{outDir}\"";
 
         var psi = new ProcessStartInfo
         {
@@ -51,6 +76,7 @@ public class LibreOfficeConverter : IConverter
             WorkingDirectory = outDir
         };
 
+        // Prevent external Python environment variables from interfering with LibreOffice's internal Python runtime
         psi.EnvironmentVariables.Remove("PYTHONHOME");
         psi.EnvironmentVariables.Remove("PYTHONPATH");
 
@@ -62,6 +88,9 @@ public class LibreOfficeConverter : IConverter
             {
                 return ConversionResult.Fail(Name, "Failed to start soffice.exe process.");
             }
+
+            // Assign LibreOffice process to Job Object so it is guaranteed to terminate if app closes
+            JobObjectManager.AssignProcess(process);
 
             var stdOutTask = process.StandardOutput.ReadToEndAsync();
             var stdErrTask = process.StandardError.ReadToEndAsync();
@@ -96,8 +125,10 @@ public class LibreOfficeConverter : IConverter
             var stdErr = await stdErrTask;
             sw.Stop();
 
+            // Check if PDF file was generated
             if (File.Exists(generatedPdfPath))
             {
+                // If requested pdfPath is different from generated (e.g. casing), handle rename
                 if (!string.Equals(Path.GetFullPath(generatedPdfPath), Path.GetFullPath(pdfPath), StringComparison.OrdinalIgnoreCase))
                 {
                     File.Move(generatedPdfPath, pdfPath, overwrite: true);
@@ -113,13 +144,13 @@ public class LibreOfficeConverter : IConverter
 
             return ConversionResult.Fail(Name, errorDetail, sw.ElapsedMilliseconds);
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
         catch (Exception ex)
         {
-            return ConversionResult.Fail(Name, $"Error invoking LibreOffice: {ex.Message}", sw.ElapsedMilliseconds);
+            sw.Stop();
+            return ConversionResult.Fail(Name, $"LibreOffice execution error: {ex.Message}", sw.ElapsedMilliseconds);
+        }
+        finally
+        {
         }
     }
 }

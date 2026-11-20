@@ -7,42 +7,85 @@ namespace Docx2PDFLive.Core.Services;
 
 public class ConversionQueue : IDisposable
 {
-    private readonly BlockingCollection<ConversionItem> _queue = new();
     private readonly IConverter _converter;
-    private readonly CancellationTokenSource _disposeCts = new();
+    private readonly BlockingCollection<ConversionItem> _queue = new();
     private readonly ManualResetEventSlim _pauseEvent = new(true);
-    private readonly SemaphoreSlim _concurrencySemaphore;
-    private readonly Task _workerTask;
     private CancellationTokenSource _runCts = new();
-    private int _currentRunId = 0;
+    private readonly CancellationTokenSource _disposeCts = new();
+    private readonly SemaphoreSlim _concurrencySemaphore;
+    private readonly List<Task> _workerTasks = new();
+    private int _currentRunId = 1;
+    private bool _isPaused;
+    private bool _disposed;
 
     public event Action<ConversionItem>? ItemStatusChanged;
-    public bool IsPaused { get; private set; }
+    public event Action<bool>? PauseStateChanged;
+
+    public bool IsPaused
+    {
+        get => _isPaused;
+        private set
+        {
+            if (_isPaused != value)
+            {
+                _isPaused = value;
+                if (_isPaused)
+                {
+                    _pauseEvent.Reset();
+                }
+                else
+                {
+                    _pauseEvent.Set();
+                }
+                PauseStateChanged?.Invoke(_isPaused);
+            }
+        }
+    }
 
     public ConversionQueue(IConverter? converter = null, int maxDegreeOfParallelism = 2)
     {
         _converter = converter ?? new CompositeConverter();
-        _concurrencySemaphore = new SemaphoreSlim(Math.Max(1, maxDegreeOfParallelism));
-        _workerTask = Task.Run(ProcessQueueLoopAsync);
+        
+        // Bounded parallel workers to balance high throughput with minimal RAM footprint (typically <150MB)
+        var maxWorkers = Math.Clamp(maxDegreeOfParallelism, 1, 4);
+        _concurrencySemaphore = new SemaphoreSlim(maxWorkers, maxWorkers);
+
+        for (int i = 0; i < maxWorkers; i++)
+        {
+            _workerTasks.Add(Task.Run(ProcessQueueLoopAsync));
+        }
     }
 
     public void Enqueue(ConversionItem item, bool forceReconvert = false)
     {
-        if (!File.Exists(item.FilePath)) return;
+        if (_disposed) return;
 
-        var dir = Path.GetDirectoryName(item.FilePath) ?? string.Empty;
-        var pdfPath = Path.Combine(dir, Path.GetFileNameWithoutExtension(item.FilePath) + ".pdf");
-
-        if (!forceReconvert && File.Exists(pdfPath))
+        // Fast-path: Check if the PDF already exists and is fresher than or equal to the source DOCX
+        if (!forceReconvert && File.Exists(item.FilePath))
         {
-            var docxTime = File.GetLastWriteTimeUtc(item.FilePath);
-            var pdfTime = File.GetLastWriteTimeUtc(pdfPath);
-            if (pdfTime >= docxTime)
+            var dir = Path.GetDirectoryName(item.FilePath) ?? Directory.GetCurrentDirectory();
+            var pdfFileName = Path.GetFileNameWithoutExtension(item.FilePath) + ".pdf";
+            var targetPdfPath = Path.Combine(dir, pdfFileName);
+
+            if (File.Exists(targetPdfPath))
             {
-                item.Status = ConversionStatus.Synced;
-                item.Timestamp = DateTime.Now.ToString("HH:mm:ss");
-                ItemStatusChanged?.Invoke(item);
-                return;
+                try
+                {
+                    var docxTime = File.GetLastWriteTimeUtc(item.FilePath);
+                    var pdfTime = File.GetLastWriteTimeUtc(targetPdfPath);
+
+                    // If PDF is up-to-date, mark Synced immediately without queue backlog
+                    if (pdfTime >= docxTime)
+                    {
+                        item.Status = ConversionStatus.Synced;
+                        item.Engine = "Up to date";
+                        item.Timestamp = DateTime.Now.ToString("HH:mm:ss");
+                        item.ErrorMessage = null;
+                        ItemStatusChanged?.Invoke(item);
+                        return;
+                    }
+                }
+                catch { }
             }
         }
 
@@ -55,8 +98,10 @@ public class ConversionQueue : IDisposable
 
     public void CancelAndClear()
     {
+        // Increment run generation so pending dequeued items from old folder are instantly dropped
         Interlocked.Increment(ref _currentRunId);
 
+        // 1. Cancel the active conversion run immediately (terminates any running soffice.exe / file streams)
         var oldCts = _runCts;
         _runCts = new CancellationTokenSource();
         try
@@ -66,16 +111,26 @@ public class ConversionQueue : IDisposable
         }
         catch { }
 
+        // 2. Drain all pending items from the queue
         while (_queue.TryTake(out _)) { }
 
+        // Ensure pause state does not block new tasks
         if (!IsPaused)
         {
             _pauseEvent.Set();
         }
     }
 
-    public void Pause() => IsPaused = true;
-    public void Resume() => IsPaused = false;
+    public void Pause()
+    {
+        IsPaused = true;
+    }
+
+    public void Resume()
+    {
+        IsPaused = false;
+    }
+
     public void TogglePause()
     {
         if (IsPaused) Resume();
@@ -102,10 +157,14 @@ public class ConversionQueue : IDisposable
                     break;
                 }
 
-                if (item == null || item.RunId != _currentRunId) continue;
+                if (item == null) continue;
+
+                // Discard stale items belonging to a cancelled previous folder run
+                if (item.RunId != _currentRunId) continue;
 
                 _pauseEvent.Wait(disposeToken);
 
+                // Acquire bounded concurrency slot
                 await _concurrencySemaphore.WaitAsync(disposeToken);
 
                 _ = Task.Run(async () =>
@@ -116,7 +175,10 @@ public class ConversionQueue : IDisposable
                         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(runToken, disposeToken);
                         await ProcessSingleItemAsync(item, linkedCts.Token);
                     }
-                    catch (OperationCanceledException) { }
+                    catch (OperationCanceledException)
+                    {
+                        // Clean abort when folder was changed or cancelled
+                    }
                     finally
                     {
                         _concurrencySemaphore.Release();
@@ -144,6 +206,7 @@ public class ConversionQueue : IDisposable
 
         try
         {
+            // Verify file exists and is unlocked (e.g. Word saving)
             var isReady = await WaitForFileReadyAsync(item.FilePath, maxRetries: 4, delayMs: 400, token);
             if (!isReady)
             {
@@ -157,7 +220,7 @@ public class ConversionQueue : IDisposable
                 }
 
                 item.Status = ConversionStatus.Error;
-                item.ErrorMessage = "File remained locked by another application.";
+                item.ErrorMessage = "File remained locked by another application (e.g. Word).";
                 item.Timestamp = DateTime.Now.ToString("HH:mm:ss");
                 ItemStatusChanged?.Invoke(item);
                 return;
@@ -212,28 +275,53 @@ public class ConversionQueue : IDisposable
         for (int i = 0; i < maxRetries; i++)
         {
             token.ThrowIfCancellationRequested();
+
+            if (!File.Exists(path)) return false;
+
             try
             {
-                using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                if (stream.Length > 0) return true;
+                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                if (fs.Length > 0)
+                {
+                    return true;
+                }
             }
             catch (IOException)
             {
-                await Task.Delay(delayMs, token);
+                // File locked by saving process
             }
+
+            await Task.Delay(delayMs, token);
         }
+
         return false;
     }
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+
+        CancelAndClear();
         _disposeCts.Cancel();
-        _queue.CompleteAdding();
         _pauseEvent.Set();
-        try { _workerTask.Wait(1000); } catch { }
-        _disposeCts.Dispose();
-        _pauseEvent.Dispose();
+        _queue.CompleteAdding();
+
+        try
+        {
+            Task.WaitAll(_workerTasks.ToArray(), TimeSpan.FromSeconds(2));
+        }
+        catch { }
+
         _concurrencySemaphore.Dispose();
+        _pauseEvent.Dispose();
         _runCts.Dispose();
+        _disposeCts.Dispose();
+        _queue.Dispose();
+
+        if (_converter is IDisposable disposableConverter)
+        {
+            try { disposableConverter.Dispose(); } catch { }
+        }
     }
 }

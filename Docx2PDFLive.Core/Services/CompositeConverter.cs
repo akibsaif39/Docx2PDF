@@ -1,32 +1,104 @@
+using System.Diagnostics;
 using System.IO;
 
 namespace Docx2PDFLive.Core.Services;
 
-public class CompositeConverter : IConverter
+/// <summary>
+/// High-fidelity composite converter.
+/// Strictly uses Microsoft Word (native, high-speed warm instance) or LibreOffice.
+/// Never degrades to simple/openxml format conversions.
+/// </summary>
+public class CompositeConverter : IConverter, IDisposable, IAsyncDisposable
 {
+    private readonly WarmWordConverter? _wordConverter;
     private readonly LibreOfficeConverter? _libreOfficeConverter;
-    private readonly OpenXmlPdfConverter _openXmlPdfConverter;
-    private readonly bool _preferLibreOffice;
+    private readonly OfficeEngineType _preferredEngine;
+    private bool _disposed;
 
-    public string Name => "Smart Composite Converter";
+    public string Name => ActiveEngineName;
 
-    public CompositeConverter(bool preferLibreOffice = true)
+    public string ActiveEngineName
     {
-        _preferLibreOffice = preferLibreOffice;
-        _openXmlPdfConverter = new OpenXmlPdfConverter();
-
-        if (LibreOfficeDetector.IsAvailable(out var loPath))
+        get
         {
-            _libreOfficeConverter = new LibreOfficeConverter(loPath);
+            if (_wordConverter != null) return "Microsoft Word (Native High-Speed)";
+            if (_libreOfficeConverter != null) return "LibreOffice";
+            return "No Engine Available";
         }
+    }
+
+    public CompositeConverter()
+    {
+        var available = OfficeEngineDetector.GetAvailableEngines();
+
+        if (available.HasFlag(OfficeEngineType.MicrosoftWord))
+        {
+            try
+            {
+                _wordConverter = new WarmWordConverter();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to initialize WarmWordConverter: {ex.Message}");
+            }
+        }
+
+        if (available.HasFlag(OfficeEngineType.LibreOffice) || LibreOfficeDetector.IsAvailable(out var loPath))
+        {
+            try
+            {
+                _libreOfficeConverter = new LibreOfficeConverter();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to initialize LibreOfficeConverter: {ex.Message}");
+            }
+        }
+
+        _preferredEngine = OfficeEngineDetector.GetFastestAvailableEngine();
     }
 
     public async Task<ConversionResult> ConvertAsync(string docxPath, string pdfPath, CancellationToken cancellationToken = default)
     {
-        var hasComplexElements = HasComplexFormatting(docxPath);
-        var useLibreOffice = _libreOfficeConverter != null && (_preferLibreOffice || hasComplexElements);
+        if (!File.Exists(docxPath))
+        {
+            return ConversionResult.Fail(Name, $"Source DOCX file not found: {docxPath}");
+        }
 
-        if (useLibreOffice && _libreOfficeConverter != null)
+        // 1. Try Primary Engine (Word prioritized for speed and 100% native layout)
+        if (_preferredEngine == OfficeEngineType.MicrosoftWord && _wordConverter != null)
+        {
+            try
+            {
+                var wordResult = await _wordConverter.ConvertAsync(docxPath, pdfPath, cancellationToken);
+                if (wordResult.Success && File.Exists(pdfPath))
+                {
+                    return wordResult;
+                }
+
+                Debug.WriteLine($"Word conversion failed ({wordResult.ErrorMessage}). Checking for LibreOffice fallback...");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception invoking Word converter: {ex.Message}");
+            }
+
+            // Fallback to LibreOffice if Word encountered an unexpected issue
+            if (_libreOfficeConverter != null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var loResult = await _libreOfficeConverter.ConvertAsync(docxPath, pdfPath, cancellationToken);
+                if (loResult.Success && File.Exists(pdfPath))
+                {
+                    return loResult;
+                }
+            }
+
+            return ConversionResult.Fail(Name, "Conversion failed with Microsoft Word. Ensure the document is not corrupt or password-protected.");
+        }
+
+        // 2. Primary Engine is LibreOffice (e.g. Word is not installed)
+        if (_libreOfficeConverter != null)
         {
             try
             {
@@ -35,36 +107,50 @@ public class CompositeConverter : IConverter
                 {
                     return loResult;
                 }
+
+                Debug.WriteLine($"LibreOffice conversion failed: {loResult.ErrorMessage}");
             }
-            catch (OperationCanceledException)
+            catch (Exception ex)
             {
-                throw;
+                Debug.WriteLine($"Exception invoking LibreOffice: {ex.Message}");
             }
-            catch { }
+
+            // If LibreOffice failed but Word is available
+            if (_wordConverter != null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var wordResult = await _wordConverter.ConvertAsync(docxPath, pdfPath, cancellationToken);
+                if (wordResult.Success && File.Exists(pdfPath))
+                {
+                    return wordResult;
+                }
+            }
+
+            return ConversionResult.Fail(Name, "Conversion failed with LibreOffice. Ensure the document is not corrupt or password-protected.");
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return await _openXmlPdfConverter.ConvertAsync(docxPath, pdfPath, cancellationToken);
+        return ConversionResult.Fail(Name, "No high-fidelity conversion engine (Microsoft Word or LibreOffice) is installed on this system.");
     }
 
-    public static bool HasComplexFormatting(string docxPath)
+    public void Dispose()
     {
-        try
-        {
-            if (!File.Exists(docxPath)) return false;
-            using var fs = new FileStream(docxPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var archive = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read);
-            var docEntry = archive.GetEntry("word/document.xml");
-            if (docEntry == null) return false;
+        if (_disposed) return;
+        _disposed = true;
 
-            using var reader = new StreamReader(docEntry.Open());
-            var xml = reader.ReadToEnd();
-            return xml.Contains("<w:tbl") || xml.Contains("<w:drawing") || xml.Contains("<w:pict");
-        }
-        catch
+        _wordConverter?.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_wordConverter != null)
         {
-            return false;
+            await _wordConverter.DisposeAsync();
         }
+
+        GC.SuppressFinalize(this);
     }
 }
