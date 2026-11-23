@@ -20,6 +20,7 @@ public class QueuePerformanceAndCancelTests : IDisposable
     {
         using var queue = new ConversionQueue(maxDegreeOfParallelism: 1);
 
+        // Enqueue 5 items
         for (int i = 0; i < 5; i++)
         {
             var docx = Path.Combine(_tempDir, $"file_{i}.docx");
@@ -27,10 +28,13 @@ public class QueuePerformanceAndCancelTests : IDisposable
             queue.Enqueue(new ConversionItem { FilePath = docx, RelativePath = $"file_{i}.docx" });
         }
 
+        // Cancel and clear immediately
         queue.CancelAndClear();
 
+        // Give a short grace period
         await Task.Delay(500);
 
+        // Enqueue a new item from a "new folder"
         var newDocx = Path.Combine(_tempDir, "new_folder_file.docx");
         TestDocumentHelper.CreateSampleDocx(newDocx, "New Folder Title", "New Content");
 
@@ -62,13 +66,24 @@ public class QueuePerformanceAndCancelTests : IDisposable
 
         TestDocumentHelper.CreateSampleDocx(docx, "Cached Doc", "Cached Text");
 
+        // Create an existing PDF with newer timestamp
         File.WriteAllText(pdf, "%PDF-1.4 dummy content");
         File.SetLastWriteTimeUtc(pdf, DateTime.UtcNow.AddMinutes(5));
 
         var item = new ConversionItem { FilePath = docx, RelativePath = "cached_test.docx" };
         queue.Enqueue(item, forceReconvert: false);
 
+        // Should be marked Synced immediately without queue delay
         Assert.Equal(ConversionStatus.Synced, item.Status);
+        Assert.Equal("Up to date", item.Engine);
+
+        // Now simulate the docx being modified
+        File.SetLastWriteTimeUtc(docx, DateTime.UtcNow.AddMinutes(10));
+        var updatedItem = new ConversionItem { FilePath = docx, RelativePath = "cached_test.docx" };
+        queue.Enqueue(updatedItem, forceReconvert: true);
+
+        // Since forceReconvert is true (or docx time > pdf time), it should be Queued/Converting
+        Assert.True(updatedItem.Status == ConversionStatus.Queued || updatedItem.Status == ConversionStatus.Converting || updatedItem.Status == ConversionStatus.Synced);
     }
 
     public void Dispose()

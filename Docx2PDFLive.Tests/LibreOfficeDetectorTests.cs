@@ -1,3 +1,4 @@
+using System.IO;
 using Docx2PDFLive.Core.Services;
 using Xunit;
 
@@ -8,10 +9,11 @@ public class LibreOfficeDetectorTests
     [Fact]
     public void LibreOfficeDetector_FindsInstalledLibreOffice()
     {
-        var found = LibreOfficeDetector.IsAvailable(out var path);
-        if (found)
-        {
-            Assert.True(System.IO.File.Exists(path), "Path returned by detector must exist on disk.");
-        }
+        var isAvailable = LibreOfficeDetector.IsAvailable(out var path);
+
+        // On this Windows system, LibreOffice 26.2 is installed at C:\Program Files\LibreOffice\program\soffice.exe
+        Assert.True(isAvailable, "LibreOffice should be detected on this system.");
+        Assert.False(string.IsNullOrWhiteSpace(path));
+        Assert.True(File.Exists(path), $"soffice.exe must exist at {path}");
     }
 }

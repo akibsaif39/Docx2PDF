@@ -11,45 +11,61 @@ public class FolderWatcherAndQueueTests : IDisposable
 
     public FolderWatcherAndQueueTests()
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), "Docx2PDFLive_Tests_" + Guid.NewGuid().ToString("N"));
+        _tempDir = Path.Combine(Path.GetTempPath(), "Docx2PDFLive_QueueTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
     }
 
     [Fact]
     public async Task ConversionQueue_ProcessesItemSequentially()
     {
-        var docxPath = Path.Combine(_tempDir, "test1.docx");
-        var pdfPath = Path.Combine(_tempDir, "test1.pdf");
-
-        TestDocumentHelper.CreateSampleDocx(docxPath, "Queue Test", "Queue body text");
+        var docxPath = Path.Combine(_tempDir, "queue_test.docx");
+        TestDocumentHelper.CreateSampleDocx(docxPath, "Queue Doc", "Testing queue conversion.");
 
         using var queue = new ConversionQueue();
-        var tcs = new TaskCompletionSource<bool>();
-
-        queue.ItemStatusChanged += item =>
+        var item = new ConversionItem
         {
-            if (item.FilePath == docxPath && item.Status == ConversionStatus.Synced)
+            FilePath = docxPath,
+            RelativePath = "queue_test.docx"
+        };
+
+        var completedTcs = new TaskCompletionSource<bool>();
+        queue.ItemStatusChanged += updatedItem =>
+        {
+            if (updatedItem.FilePath == docxPath && updatedItem.Status == ConversionStatus.Synced)
             {
-                tcs.TrySetResult(true);
+                completedTcs.TrySetResult(true);
+            }
+            else if (updatedItem.FilePath == docxPath && updatedItem.Status == ConversionStatus.Error)
+            {
+                completedTcs.TrySetException(new Exception(updatedItem.ErrorMessage));
             }
         };
 
-        var item = new ConversionItem { FilePath = docxPath, RelativePath = "test1.docx" };
         queue.Enqueue(item);
 
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(15000));
-        Assert.True(completed == tcs.Task, "Item did not reach Synced status within timeout.");
-        Assert.True(File.Exists(pdfPath), "PDF file was not created.");
+        var completed = await Task.WhenAny(completedTcs.Task, Task.Delay(15000));
+        Assert.True(completed == completedTcs.Task, "Queue failed to process item within timeout.");
+        Assert.True(await completedTcs.Task);
+
+        var expectedPdf = Path.Combine(_tempDir, "queue_test.pdf");
+        Assert.True(File.Exists(expectedPdf), "Target PDF must exist beside DOCX.");
     }
 
     [Fact]
     public void ConversionQueue_PauseAndResume_TogglesCorrectly()
     {
         using var queue = new ConversionQueue();
-
         Assert.False(queue.IsPaused);
+
+        queue.Pause();
+        Assert.True(queue.IsPaused);
+
+        queue.Resume();
+        Assert.False(queue.IsPaused);
+
         queue.TogglePause();
         Assert.True(queue.IsPaused);
+
         queue.TogglePause();
         Assert.False(queue.IsPaused);
     }

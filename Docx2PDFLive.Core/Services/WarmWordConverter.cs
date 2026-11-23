@@ -148,6 +148,13 @@ public class WarmWordConverter : IConverter, IDisposable, IAsyncDisposable
                 return ConversionResult.Fail(Name, "Failed to open document in Microsoft Word.", sw.ElapsedMilliseconds);
             }
 
+            // Ensure layout and pagination are fully calculated before export
+            try
+            {
+                doc.Repaginate();
+            }
+            catch { }
+
             // Export native PDF with 100% formatting fidelity
             doc.ExportAsFixedFormat(
                 OutputFileName: pdfPath,
@@ -236,7 +243,15 @@ public class WarmWordConverter : IConverter, IDisposable, IAsyncDisposable
 
             _wordApp.Visible = false;
             _wordApp.DisplayAlerts = WdAlertsNone;
-            _wordApp.ScreenUpdating = false;
+
+            // Preserve full visual fidelity: ScreenUpdating must remain true so Word calculates and renders
+            // paragraph borders (<w:pBdr>), dividing lines, and graphic elements into the PDF stream
+            try
+            {
+                _wordApp.Options.PrintBackgrounds = true;
+                _wordApp.Options.PrintDrawingObjects = true;
+            }
+            catch { }
 
             // Associate the newly launched WINWORD process with our Windows Job Object
             try

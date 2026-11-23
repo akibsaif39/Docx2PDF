@@ -2,22 +2,23 @@ namespace Docx2PDFLive.Core.Services;
 
 public class ConversionResult
 {
-    public bool Success { get; }
-    public string EngineUsed { get; }
-    public string? ErrorMessage { get; }
-    public long ElapsedMilliseconds { get; }
+    public bool Success { get; set; }
+    public string EngineUsed { get; set; } = string.Empty;
+    public string? ErrorMessage { get; set; }
+    public long ElapsedMilliseconds { get; set; }
 
-    private ConversionResult(bool success, string engineUsed, string? errorMessage, long elapsedMilliseconds)
+    public static ConversionResult Ok(string engine, long elapsedMs = 0) => new()
     {
-        Success = success;
-        EngineUsed = engineUsed;
-        ErrorMessage = errorMessage;
-        ElapsedMilliseconds = elapsedMilliseconds;
-    }
+        Success = true,
+        EngineUsed = engine,
+        ElapsedMilliseconds = elapsedMs
+    };
 
-    public static ConversionResult Ok(string engineUsed, long elapsedMs = 0) =>
-        new(true, engineUsed, null, elapsedMs);
-
-    public static ConversionResult Fail(string engineUsed, string errorMessage, long elapsedMs = 0) =>
-        new(false, engineUsed, errorMessage, elapsedMs);
+    public static ConversionResult Fail(string engine, string error, long elapsedMs = 0) => new()
+    {
+        Success = false,
+        EngineUsed = engine,
+        ErrorMessage = error,
+        ElapsedMilliseconds = elapsedMs
+    };
 }

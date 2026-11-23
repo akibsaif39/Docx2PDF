@@ -373,7 +373,15 @@ public class SetupForm : Form
             var installedExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Docx2PDF", "Docx2PDF.exe");
             if (!File.Exists(installedExe))
             {
-                installedExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".dev", "Docx2PDF.exe");
+                var x86Exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Docx2PDF", "Docx2PDF.exe");
+                if (File.Exists(x86Exe))
+                {
+                    installedExe = x86Exe;
+                }
+                else
+                {
+                    installedExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".dev", "Docx2PDF.exe");
+                }
             }
 
             if (File.Exists(installedExe))
@@ -432,7 +440,8 @@ public class SetupForm : Form
                 {
                     FileName = "msiexec.exe",
                     Arguments = $"/i \"{targetMsi}\"",
-                    UseShellExecute = true
+                    UseShellExecute = true,
+                    Verb = "runas"
                 };
                 using var p = Process.Start(psi);
                 p?.WaitForExit();

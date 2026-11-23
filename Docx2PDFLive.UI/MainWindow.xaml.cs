@@ -14,8 +14,8 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private NotifyIcon? _notifyIcon;
-    private bool _isExplicitExit = false;
-    private bool _hasShownBalloon = false;
+    private bool _isExplicitExit;
+    private bool _hasShownBalloon;
 
     public MainWindow()
     {
@@ -39,6 +39,7 @@ public partial class MainWindow : Window
 
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
+        // One-time first-launch welcome modal check
         if (!FirstRunMarker.HasBeenWelcomed())
         {
             var welcomeModal = new FirstRunWelcomeWindow
@@ -46,13 +47,20 @@ public partial class MainWindow : Window
                 Owner = this,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner
             };
-            welcomeModal.ShowDialog();
-            FirstRunMarker.MarkWelcomed();
-        }
 
-        if (_viewModel.IsLibreOfficeMissing)
+            var result = welcomeModal.ShowDialog();
+
+            // After Get Started is clicked, prompt for folder
+            if (result == true)
+            {
+                _viewModel.PromptSelectFolder();
+            }
+        }
+        else
         {
-            // banner is visible in UI
+            // Prompt user to select root folder every time the app opens
+            // Never saving or restoring previously watched folder paths
+            _viewModel.PromptSelectFolder();
         }
     }
 
@@ -66,6 +74,7 @@ public partial class MainWindow : Window
                 Visible = true
             };
 
+            // Load icon from embedded resources or disk
             var icoStream = Application.GetResourceStream(new Uri("pack://application:,,,/Resources/app.ico"))?.Stream;
             if (icoStream != null)
             {
@@ -77,6 +86,7 @@ public partial class MainWindow : Window
             }
 
             var contextMenu = new ContextMenuStrip();
+
             var openItem = new ToolStripMenuItem("Open Docx2PDF", null, (s, e) => RestoreWindow());
             var aboutItem = new ToolStripMenuItem("About & Credits...", null, (s, e) => _viewModel.ShowAboutDialog());
             var pauseItem = new ToolStripMenuItem("Pause / Resume", null, (s, e) => _viewModel.PauseResumeCommand.Execute(null));
@@ -100,6 +110,7 @@ public partial class MainWindow : Window
 
     private void OnWindowStateChanged(object? sender, EventArgs e)
     {
+        // When minimized, hide to system tray
         if (WindowState == WindowState.Minimized)
         {
             HideToTray();
@@ -110,6 +121,7 @@ public partial class MainWindow : Window
     {
         if (_isExplicitExit)
         {
+            // Clean exit
             if (_notifyIcon != null)
             {
                 _notifyIcon.Visible = false;
@@ -121,6 +133,7 @@ public partial class MainWindow : Window
         }
         else
         {
+            // When user clicks the close [X] button, hide to system tray instead of exiting
             e.Cancel = true;
             HideToTray();
         }

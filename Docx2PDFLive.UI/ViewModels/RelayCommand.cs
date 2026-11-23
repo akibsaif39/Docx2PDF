@@ -13,6 +13,11 @@ public class RelayCommand : ICommand
         _canExecute = canExecute;
     }
 
+    public RelayCommand(Action execute, Func<bool>? canExecute = null)
+        : this(_ => execute(), canExecute != null ? _ => canExecute() : null)
+    {
+    }
+
     public bool CanExecute(object? parameter) => _canExecute?.Invoke(parameter) ?? true;
 
     public void Execute(object? parameter) => _execute(parameter);
@@ -22,4 +27,6 @@ public class RelayCommand : ICommand
         add => CommandManager.RequerySuggested += value;
         remove => CommandManager.RequerySuggested -= value;
     }
+
+    public void RaiseCanExecuteChanged() => CommandManager.InvalidateRequerySuggested();
 }

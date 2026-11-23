@@ -4,17 +4,17 @@ namespace Docx2PDFLive.Core.Services;
 
 public static class FirstRunMarker
 {
-    private static readonly string MarkerDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Docx2PDF");
+    public static string DirectoryPath =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Docx2PDFLive");
 
-    private static readonly string MarkerFilePath = Path.Combine(MarkerDirectory, ".first_run_completed");
+    public static string FlagFilePath =>
+        Path.Combine(DirectoryPath, "welcomed.flag");
 
     public static bool HasBeenWelcomed()
     {
         try
         {
-            return File.Exists(MarkerFilePath);
+            return File.Exists(FlagFilePath);
         }
         catch
         {
@@ -26,13 +26,30 @@ public static class FirstRunMarker
     {
         try
         {
-            if (!Directory.Exists(MarkerDirectory))
+            if (!Directory.Exists(DirectoryPath))
             {
-                Directory.CreateDirectory(MarkerDirectory);
+                Directory.CreateDirectory(DirectoryPath);
             }
-
-            File.WriteAllText(MarkerFilePath, $"Welcomed at: {DateTime.UtcNow:O}");
+            File.WriteAllText(FlagFilePath, $"Welcomed at {DateTime.UtcNow:O} - Docx2PDF created by Akib");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to write welcome flag: {ex.Message}");
+        }
+    }
+
+    public static void ResetWelcome()
+    {
+        try
+        {
+            if (File.Exists(FlagFilePath))
+            {
+                File.Delete(FlagFilePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to delete welcome flag: {ex.Message}");
+        }
     }
 }

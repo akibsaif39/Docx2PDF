@@ -1,12 +1,13 @@
 using System.IO;
-using System.IO.Compression;
-using System.Text;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Docx2PDFLive.Tests;
 
 public static class TestDocumentHelper
 {
-    public static void CreateSampleDocx(string filePath, string headingText, string bodyText)
+    public static string CreateSampleDocx(string filePath, string heading = "Test Heading", string bodyText = "This is a test paragraph for Docx2PDF Live conversion.")
     {
         var dir = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -14,36 +15,36 @@ public static class TestDocumentHelper
             Directory.CreateDirectory(dir);
         }
 
-        using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write);
-        using var zip = new ZipArchive(fs, ZipArchiveMode.Create);
+        using var wordDoc = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document);
+        var mainPart = wordDoc.AddMainDocumentPart();
+        mainPart.Document = new Document();
+        var body = mainPart.Document.AppendChild(new Body());
 
-        var contentTypes = @"<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>
-<Types xmlns=""http://schemas.openxmlformats.org/package/2006/content-types"">
-    <Default Extension=""rels"" ContentType=""application/vnd.openxmlformats-package.relationships+xml""/>
-    <Default Extension=""xml"" ContentType=""application/xml""/>
-    <Override PartName=""/word/document.xml"" ContentType=""application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml""/>
-</Types>";
-        AddZipEntry(zip, "[Content_Types].xml", contentTypes);
+        // Heading paragraph
+        var headingPara = body.AppendChild(new Paragraph());
+        var headingRun = headingPara.AppendChild(new Run());
+        headingRun.AppendChild(new Text(heading));
 
-        var docXml = $@"<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>
-<w:document xmlns:w=""http://schemas.openxmlformats.org/wordprocessingml/2006/main"">
-    <w:body>
-        <w:p>
-            <w:pPr><w:pStyle w:val=""Heading1""/></w:pPr>
-            <w:r><w:t>{headingText}</w:t></w:r>
-        </w:p>
-        <w:p>
-            <w:r><w:t>{bodyText}</w:t></w:r>
-        </w:p>
-    </w:body>
-</w:document>";
-        AddZipEntry(zip, "word/document.xml", docXml);
-    }
+        // Body paragraph
+        var bodyPara = body.AppendChild(new Paragraph());
+        var bodyRun = bodyPara.AppendChild(new Run());
+        bodyRun.AppendChild(new Text(bodyText));
 
-    private static void AddZipEntry(ZipArchive zip, string entryName, string content)
-    {
-        var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
-        using var writer = new StreamWriter(entry.Open(), Encoding.UTF8);
-        writer.Write(content);
+        // Add a table
+        var table = body.AppendChild(new Table());
+        for (int r = 0; r < 2; r++)
+        {
+            var row = table.AppendChild(new TableRow());
+            for (int c = 0; c < 2; c++)
+            {
+                var cell = row.AppendChild(new TableCell());
+                var cellPara = cell.AppendChild(new Paragraph());
+                var cellRun = cellPara.AppendChild(new Run());
+                cellRun.AppendChild(new Text($"Cell {r},{c}"));
+            }
+        }
+
+        mainPart.Document.Save();
+        return filePath;
     }
 }

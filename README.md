@@ -18,10 +18,11 @@
 
 ## Features
 
-- **Strict High-Fidelity Conversion**: Uses real Microsoft Word or LibreOffice engines exclusively. Never degrades document formatting, preserving exact fonts, margins, shapes, and table layouts (essential for resumes and formal documents).
-- **Ultra-Fast Performance**: Features a persistent warm engine architecture delivering conversions in **150ms–300ms** per document, running many times faster even on lower-end systems.
+- **Strict High-Fidelity 1-to-1 Conversion**: Powered by native Microsoft Word COM or LibreOffice headless. Retains 100% visual fidelity including table borders, paragraph rules, section divider lines, custom typography, and backgrounds (critical for resumes, contracts, and formal documents).
+- **Ultra-Fast Performance**: Features a persistent warm engine architecture delivering conversions in **150ms–300ms** per document, running seamlessly even on lower-end hardware.
 - **Zero Ghost Process Guarantee**: Enforces Windows Kernel Job Object protection (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) and automated 90-second idle release to ensure zero lingering `WINWORD.EXE` or `soffice.exe` background processes.
 - **Mandatory Prerequisite Gate**: Verifies at launch that either Microsoft Word or LibreOffice is installed. If neither is detected, a clean setup modal guides the user to install LibreOffice with a single click.
+- **Standalone Single-File Architecture**: Self-extracting compressed single binary (`Docx2PDF.exe`) with zero external DLL requirements.
 - **Live Real-Time Monitoring**: Automatically detects added, modified, or renamed Word documents across nested subdirectories.
 - **Background Tray Mode**: Minimizing or closing `Docx2PDF` hides it directly into the Windows System Tray, continuing conversions quietly in the background without cluttering your taskbar.
 - **Single-Instance Protection**: Clicking the app shortcut while it is already running automatically unhides and brings the existing window to the foreground, preventing duplicate processes.

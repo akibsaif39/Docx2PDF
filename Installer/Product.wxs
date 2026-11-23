@@ -49,7 +49,7 @@
       </Component>
     </StandardDirectory>
 
-    <Feature Id="Main">
+    <Feature Id="MainFeature" Title="Docx2PDF" Level="1">
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="AppIconComponent" />
       <ComponentRef Id="ApplicationShortcut" />

@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Xml.Linq;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 
@@ -9,162 +11,397 @@ namespace Docx2PDFLive.Core.Services;
 
 public class OpenXmlPdfConverter : IConverter
 {
-    public string Name => "Built-in OpenXml Engine";
-
-    public async Task<ConversionResult> ConvertAsync(string docxPath, string pdfPath, CancellationToken cancellationToken = default)
+    static OpenXmlPdfConverter()
     {
-        return await Task.Run(() =>
+        try
         {
-            var sw = Stopwatch.StartNew();
+            PdfSharp.PdfSharpLicense.SetAgplLicense();
+        }
+        catch { }
+    }
+
+    public string Name => "OpenXml+PdfSharp";
+
+    public Task<ConversionResult> ConvertAsync(string docxPath, string pdfPath, CancellationToken cancellationToken = default)
+    {
+        var sw = Stopwatch.StartNew();
+
+        try
+        {
+            if (!File.Exists(docxPath))
+            {
+                return Task.FromResult(ConversionResult.Fail(Name, $"File not found: {docxPath}"));
+            }
+
+            var outDir = Path.GetDirectoryName(pdfPath);
+            if (!string.IsNullOrEmpty(outDir) && !Directory.Exists(outDir))
+            {
+                Directory.CreateDirectory(outDir);
+            }
+
+            using var pdfDoc = new PdfDocument();
+            pdfDoc.Info.Title = Path.GetFileNameWithoutExtension(docxPath);
+            pdfDoc.Info.Creator = "Docx2PDF - Created by Akib";
+
+            // Standard letter/A4 page size setup (A4 is 595 x 842 pt)
+            const double pageWidth = 595;
+            const double pageHeight = 842;
+            const double marginLeft = 50;
+            const double marginRight = 50;
+            const double marginTop = 50;
+            const double marginBottom = 50;
+            var contentWidth = pageWidth - marginLeft - marginRight;
+
+            PdfPage? currentPage = null;
+            XGraphics? gfx = null;
+            double currentY = marginTop;
+
+            void EnsurePage()
+            {
+                if (currentPage == null || currentY > pageHeight - marginBottom)
+                {
+                    gfx?.Dispose();
+                    currentPage = pdfDoc.AddPage();
+                    currentPage.Width = XUnit.FromPoint(pageWidth);
+                    currentPage.Height = XUnit.FromPoint(pageHeight);
+                    gfx = XGraphics.FromPdfPage(currentPage);
+                    currentY = marginTop;
+                }
+            }
+
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                // Attempt standard OpenXml SDK package load
+                using var fileStream = new FileStream(docxPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var wordDoc = WordprocessingDocument.Open(fileStream, false);
 
-                var paragraphs = ExtractDocumentParagraphs(docxPath);
+                var body = wordDoc.MainDocumentPart?.Document.Body;
+                if (body == null)
+                {
+                    throw new InvalidOperationException("DOCX body is empty or null.");
+                }
 
-                using var pdf = new PdfDocument();
-                pdf.Info.Title = Path.GetFileNameWithoutExtension(docxPath);
-                pdf.Info.Creator = "Docx2PDF";
-
-                var page = pdf.AddPage();
-                var gfx = XGraphics.FromPdfPage(page);
-                var fontRegular = new XFont("Segoe UI", 11);
-                var fontHeading = new XFont("Segoe UI", 14, XFontStyleEx.Bold);
-                var brush = XBrushes.Black;
-
-                double xMargin = 50;
-                double yMargin = 50;
-                double currentY = yMargin;
-                double maxPageY = page.Height - yMargin;
-
-                foreach (var (text, isHeading) in paragraphs)
+                // Traverse elements (Paragraphs, Tables, etc.)
+                foreach (var element in body.Elements())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var font = isHeading ? fontHeading : fontRegular;
-                    var lineSpacing = isHeading ? 22 : 16;
-
-                    if (string.IsNullOrWhiteSpace(text))
+                    if (element is Paragraph para)
                     {
-                        currentY += 10;
-                        continue;
+                        RenderParagraph(para, ref currentY, contentWidth, marginLeft, pageHeight, marginBottom, EnsurePage, () => gfx!);
                     }
-
-                    var lines = WrapText(gfx, text, font, page.Width - (xMargin * 2));
-
-                    foreach (var line in lines)
+                    else if (element is Table table)
                     {
-                        if (currentY + lineSpacing > maxPageY)
-                        {
-                            page = pdf.AddPage();
-                            gfx.Dispose();
-                            gfx = XGraphics.FromPdfPage(page);
-                            currentY = yMargin;
-                        }
-
-                        gfx.DrawString(line, font, brush, new XPoint(xMargin, currentY));
-                        currentY += lineSpacing;
+                        RenderTable(table, ref currentY, contentWidth, marginLeft, pageHeight, marginBottom, EnsurePage, () => gfx!);
                     }
-
-                    currentY += isHeading ? 8 : 4;
                 }
-
-                gfx.Dispose();
-
-                var outDir = Path.GetDirectoryName(Path.GetFullPath(pdfPath));
-                if (!string.IsNullOrEmpty(outDir) && !Directory.Exists(outDir))
-                {
-                    Directory.CreateDirectory(outDir);
-                }
-
-                pdf.Save(pdfPath);
-                sw.Stop();
-                return ConversionResult.Ok(Name, sw.ElapsedMilliseconds);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
             }
             catch (Exception ex)
             {
-                sw.Stop();
-                return ConversionResult.Fail(Name, ex.Message, sw.ElapsedMilliseconds);
+                Debug.WriteLine($"Standard OpenXml read failed ({ex.Message}). Falling back to direct ZIP XML extraction.");
+
+                // Resilient fallback: Direct ZIP XML parser for malformed DOCX files
+                // (e.g. unquoted XML attributes in [Content_Types].xml, or backslash paths in ZIP entries like word\document.xml)
+                ConvertDirectFromZip(docxPath, pdfDoc, ref currentY, contentWidth, marginLeft, pageHeight, marginBottom, EnsurePage, () => gfx!, cancellationToken);
             }
-        }, cancellationToken);
+
+            gfx?.Dispose();
+
+            // If document was completely empty, at least add one empty page
+            if (pdfDoc.PageCount == 0)
+            {
+                var emptyPage = pdfDoc.AddPage();
+                emptyPage.Width = XUnit.FromPoint(pageWidth);
+                emptyPage.Height = XUnit.FromPoint(pageHeight);
+            }
+
+            // Save PDF
+            pdfDoc.Save(pdfPath);
+            sw.Stop();
+
+            return Task.FromResult(ConversionResult.Ok(Name, sw.ElapsedMilliseconds));
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            return Task.FromResult(ConversionResult.Fail(Name, $"OpenXml conversion error: {ex.Message}", sw.ElapsedMilliseconds));
+        }
     }
 
-    private static List<(string Text, bool IsHeading)> ExtractDocumentParagraphs(string docxPath)
+    private static void ConvertDirectFromZip(
+        string docxPath,
+        PdfDocument pdfDoc,
+        ref double currentY,
+        double contentWidth,
+        double marginLeft,
+        double pageHeight,
+        double marginBottom,
+        Action ensurePage,
+        Func<XGraphics> getGfx,
+        CancellationToken cancellationToken)
     {
-        var paragraphs = new List<(string, bool)>();
-
         using var fs = new FileStream(docxPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         using var zip = new ZipArchive(fs, ZipArchiveMode.Read);
 
-        ZipArchiveEntry? entry = null;
-        foreach (var e in zip.Entries)
+        // Find main document entry (handles word/document.xml, word\document.xml, etc.)
+        var docEntry = zip.Entries.FirstOrDefault(e =>
+            e.FullName.EndsWith("document.xml", StringComparison.OrdinalIgnoreCase));
+
+        if (docEntry == null)
         {
-            var clean = e.FullName.Replace('\\', '/');
-            if (clean.Equals("word/document.xml", StringComparison.OrdinalIgnoreCase))
-            {
-                entry = e;
-                break;
-            }
+            throw new FileNotFoundException("Could not find document.xml entry inside the DOCX package.");
         }
 
-        if (entry == null) return paragraphs;
-
-        using var reader = new StreamReader(entry.Open());
-        var doc = XDocument.Load(reader);
+        using var entryStream = docEntry.Open();
+        var xdoc = XDocument.Load(entryStream);
         XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
-        foreach (var p in doc.Descendants(w + "p"))
+        var body = xdoc.Root?.Element(w + "body");
+        if (body == null) return;
+
+        foreach (var el in body.Elements())
         {
-            var pStyle = p.Element(w + "pPr")?.Element(w + "pStyle")?.Attribute(w + "val")?.Value ?? string.Empty;
-            var isHeading = pStyle.StartsWith("Heading", StringComparison.OrdinalIgnoreCase) || pStyle.Equals("Title", StringComparison.OrdinalIgnoreCase);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var sb = new System.Text.StringBuilder();
-            foreach (var t in p.Descendants(w + "t"))
+            if (el.Name == w + "p")
             {
-                sb.Append(t.Value);
+                var text = string.Concat(el.Descendants(w + "t").Select(t => t.Value));
+                RenderPlainText(text, ref currentY, contentWidth, marginLeft, pageHeight, marginBottom, ensurePage, getGfx);
             }
-
-            var text = sb.ToString();
-            paragraphs.Add((text, isHeading));
+            else if (el.Name == w + "tbl")
+            {
+                RenderXmlTable(el, w, ref currentY, contentWidth, marginLeft, pageHeight, marginBottom, ensurePage, getGfx);
+            }
         }
-
-        return paragraphs;
     }
 
-    private static List<string> WrapText(XGraphics gfx, string text, XFont font, double maxWidth)
+    private static void RenderPlainText(
+        string text,
+        ref double currentY,
+        double contentWidth,
+        double marginLeft,
+        double pageHeight,
+        double marginBottom,
+        Action ensurePage,
+        Func<XGraphics> getGfx)
     {
-        var lines = new List<string>();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            currentY += 15;
+            return;
+        }
+
+        ensurePage();
+        var gfx = getGfx();
+        var font = new XFont("Arial", 11, XFontStyleEx.Regular);
+        var brush = XBrushes.Black;
+
         var words = text.Split(' ');
-        var currentLine = string.Empty;
+        var currentLine = "";
 
         foreach (var word in words)
         {
             var testLine = string.IsNullOrEmpty(currentLine) ? word : currentLine + " " + word;
             var size = gfx.MeasureString(testLine, font);
 
-            if (size.Width <= maxWidth)
+            if (size.Width > contentWidth && !string.IsNullOrEmpty(currentLine))
             {
-                currentLine = testLine;
+                ensurePage();
+                gfx = getGfx();
+                gfx.DrawString(currentLine, font, brush, new XPoint(marginLeft, currentY), XStringFormats.TopLeft);
+                currentY += 15;
+                currentLine = word;
             }
             else
             {
-                if (!string.IsNullOrEmpty(currentLine))
-                {
-                    lines.Add(currentLine);
-                }
-                currentLine = word;
+                currentLine = testLine;
             }
         }
 
         if (!string.IsNullOrEmpty(currentLine))
         {
-            lines.Add(currentLine);
+            ensurePage();
+            gfx = getGfx();
+            gfx.DrawString(currentLine, font, brush, new XPoint(marginLeft, currentY), XStringFormats.TopLeft);
+            currentY += 17;
+        }
+    }
+
+    private static void RenderXmlTable(
+        XElement tbl,
+        XNamespace w,
+        ref double currentY,
+        double contentWidth,
+        double marginLeft,
+        double pageHeight,
+        double marginBottom,
+        Action ensurePage,
+        Func<XGraphics> getGfx)
+    {
+        var rows = tbl.Elements(w + "tr").ToList();
+        if (rows.Count == 0) return;
+
+        var font = new XFont("Arial", 10, XFontStyleEx.Regular);
+        var pen = new XPen(XColors.Gray, 0.5);
+
+        foreach (var row in rows)
+        {
+            var cells = row.Elements(w + "tc").ToList();
+            if (cells.Count == 0) continue;
+
+            var cellWidth = contentWidth / cells.Count;
+            const double rowHeight = 22.0;
+
+            ensurePage();
+            var gfx = getGfx();
+
+            for (int i = 0; i < cells.Count; i++)
+            {
+                var cell = cells[i];
+                var cellX = marginLeft + (i * cellWidth);
+                var rect = new XRect(cellX, currentY, cellWidth, rowHeight);
+                gfx.DrawRectangle(pen, rect);
+
+                var cellText = string.Concat(cell.Descendants(w + "t").Select(t => t.Value)).Trim();
+                if (!string.IsNullOrEmpty(cellText))
+                {
+                    var textRect = new XRect(cellX + 4, currentY + 3, cellWidth - 8, rowHeight - 6);
+                    gfx.DrawString(cellText, font, XBrushes.Black, textRect, XStringFormats.TopLeft);
+                }
+            }
+
+            currentY += rowHeight;
         }
 
-        return lines;
+        currentY += 8;
+    }
+
+    private static void RenderParagraph(
+        Paragraph para,
+        ref double currentY,
+        double contentWidth,
+        double marginLeft,
+        double pageHeight,
+        double marginBottom,
+        Action ensurePage,
+        Func<XGraphics> getGfx)
+    {
+        // Extract paragraph style / headings
+        var isHeading1 = para.ParagraphProperties?.ParagraphStyleId?.Val?.Value?.Contains("Heading1", StringComparison.OrdinalIgnoreCase) == true;
+        var isHeading2 = para.ParagraphProperties?.ParagraphStyleId?.Val?.Value?.Contains("Heading2", StringComparison.OrdinalIgnoreCase) == true;
+
+        var baseFontSize = isHeading1 ? 18.0 : (isHeading2 ? 14.0 : 11.0);
+        var baseBold = isHeading1 || isHeading2;
+
+        // Check paragraph alignment
+        var justification = para.ParagraphProperties?.Justification?.Val?.Value;
+        var align = XStringFormats.TopLeft;
+        if (justification == JustificationValues.Center) align = XStringFormats.TopCenter;
+        else if (justification == JustificationValues.Right) align = XStringFormats.TopRight;
+
+        var fullText = para.InnerText;
+
+        if (string.IsNullOrWhiteSpace(fullText))
+        {
+            // Empty line
+            currentY += baseFontSize + 4;
+            return;
+        }
+
+        ensurePage();
+        var gfx = getGfx();
+
+        var fontStyle = baseBold ? XFontStyleEx.Bold : XFontStyleEx.Regular;
+        var font = new XFont("Arial", baseFontSize, fontStyle);
+        var brush = XBrushes.Black;
+
+        // Word-wrap long lines
+        var words = fullText.Split(' ');
+        var currentLine = "";
+
+        foreach (var word in words)
+        {
+            var testLine = string.IsNullOrEmpty(currentLine) ? word : currentLine + " " + word;
+            var size = gfx.MeasureString(testLine, font);
+
+            if (size.Width > contentWidth && !string.IsNullOrEmpty(currentLine))
+            {
+                // Draw current line
+                ensurePage();
+                gfx = getGfx();
+                var drawX = marginLeft;
+                if (align == XStringFormats.TopCenter) drawX = marginLeft + (contentWidth / 2);
+                else if (align == XStringFormats.TopRight) drawX = marginLeft + contentWidth;
+
+                gfx.DrawString(currentLine, font, brush, new XPoint(drawX, currentY), align);
+                currentY += baseFontSize + 4;
+                currentLine = word;
+            }
+            else
+            {
+                currentLine = testLine;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(currentLine))
+        {
+            ensurePage();
+            gfx = getGfx();
+            var drawX = marginLeft;
+            if (align == XStringFormats.TopCenter) drawX = marginLeft + (contentWidth / 2);
+            else if (align == XStringFormats.TopRight) drawX = marginLeft + contentWidth;
+
+            gfx.DrawString(currentLine, font, brush, new XPoint(drawX, currentY), align);
+            currentY += baseFontSize + 6;
+        }
+    }
+
+    private static void RenderTable(
+        Table table,
+        ref double currentY,
+        double contentWidth,
+        double marginLeft,
+        double pageHeight,
+        double marginBottom,
+        Action ensurePage,
+        Func<XGraphics> getGfx)
+    {
+        var rows = table.Elements<TableRow>().ToList();
+        if (rows.Count == 0) return;
+
+        var font = new XFont("Arial", 10, XFontStyleEx.Regular);
+        var pen = new XPen(XColors.Gray, 0.5);
+
+        foreach (var row in rows)
+        {
+            var cells = row.Elements<TableCell>().ToList();
+            if (cells.Count == 0) continue;
+
+            var cellWidth = contentWidth / cells.Count;
+            const double rowHeight = 22.0;
+
+            ensurePage();
+            var gfx = getGfx();
+
+            for (int i = 0; i < cells.Count; i++)
+            {
+                var cell = cells[i];
+                var cellX = marginLeft + (i * cellWidth);
+                var rect = new XRect(cellX, currentY, cellWidth, rowHeight);
+
+                gfx.DrawRectangle(pen, rect);
+                var text = cell.InnerText.Trim();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    // Draw text inside cell with margin
+                    var textRect = new XRect(cellX + 4, currentY + 3, cellWidth - 8, rowHeight - 6);
+                    gfx.DrawString(text, font, XBrushes.Black, textRect, XStringFormats.TopLeft);
+                }
+            }
+
+            currentY += rowHeight;
+        }
+
+        currentY += 8; // Space after table
     }
 }

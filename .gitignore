@@ -31,6 +31,8 @@ Installer/bin/
 ## Developer hidden folder & built binaries
 .dev/
 Install.exe
+Docx2PDF_Install.exe
+.nuget/
 Installer/Docx2PDF_Setup.msi
 
 ## Test & scratch files

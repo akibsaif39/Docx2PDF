@@ -41,6 +41,7 @@ public class SingleInstanceTests
 
         try
         {
+            // Simulate second clone instance waking up the primary instance
             using (var secondarySignal = EventWaitHandle.OpenExisting(testEventName))
             {
                 secondarySignal.Set();
