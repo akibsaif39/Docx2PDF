@@ -32,14 +32,19 @@ Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host " Docx2PDF Release Automation: $tag" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
-# 1. Update project version in Docx2PDFLive.UI.csproj
-Write-Host "`n[1/7] Updating version in Docx2PDFLive.UI.csproj..." -ForegroundColor Yellow
+# 1. Update project version in Docx2PDFLive.UI.csproj and Product.wxs
+Write-Host "`n[1/7] Updating version in Docx2PDFLive.UI.csproj & Product.wxs..." -ForegroundColor Yellow
 $csprojPath = Join-Path $rootDir "Docx2PDFLive.UI\Docx2PDFLive.UI.csproj"
 $csproj = Get-Content $csprojPath -Raw
 $csproj = $csproj -replace '<Version>.*?</Version>', "<Version>$cleanVer</Version>"
 $csproj = $csproj -replace '<AssemblyVersion>.*?</AssemblyVersion>', "<AssemblyVersion>$cleanVer.0</AssemblyVersion>"
 $csproj = $csproj -replace '<FileVersion>.*?</FileVersion>', "<FileVersion>$cleanVer.0</FileVersion>"
 Set-Content -Path $csprojPath -Value $csproj -NoNewline
+
+$wxsPath = Join-Path $rootDir "Installer\Product.wxs"
+$wxs = Get-Content $wxsPath -Raw
+$wxs = $wxs -replace 'Version="[0-9\.]+"', "Version=""$cleanVer"""
+Set-Content -Path $wxsPath -Value $wxs -NoNewline
 
 # 2. Update local version.json
 Write-Host "`n[2/7] Updating version.json..." -ForegroundColor Yellow
@@ -58,9 +63,13 @@ Write-Host "`n[3/7] Publishing standalone Docx2PDF.exe..." -ForegroundColor Yell
 $publishDir = Join-Path $rootDir "publish"
 dotnet publish (Join-Path $rootDir "Docx2PDFLive.UI\Docx2PDFLive.UI.csproj") -c Release -o $publishDir
 
-# Synchronize .dev\Docx2PDF.exe
+# Synchronize .dev\Docx2PDF.exe (if not currently locked by running instance)
 $devExe = Join-Path $rootDir ".dev\Docx2PDF.exe"
-Copy-Item (Join-Path $publishDir "Docx2PDF.exe") -Destination $devExe -Force
+try {
+    Copy-Item (Join-Path $publishDir "Docx2PDF.exe") -Destination $devExe -Force -ErrorAction Stop
+} catch {
+    Write-Host "Note: .dev\Docx2PDF.exe is currently running. Skipping local dev file overwrite." -ForegroundColor Yellow
+}
 
 # 4. Rebuild native 64-bit WiX MSI
 Write-Host "`n[4/7] Rebuilding native 64-bit MSI..." -ForegroundColor Yellow
@@ -121,7 +130,7 @@ $uploadUrl = "https://uploads.github.com/repos/$owner/$repo/releases/$releaseId/
 Write-Host "`n[7/7] Pushing updated source code and version.json to GitHub main..." -ForegroundColor Yellow
 $pushScript = Join-Path $rootDir "scratch\push_to_github.ps1"
 if (Test-Path $pushScript) {
-    & powershell -ExecutionPolicy Bypass -File $pushScript
+    & powershell -ExecutionPolicy Bypass -File $pushScript -CommitMessage "Release Docx2PDF $tag`n`n$Notes"
 }
 
 Write-Host "`n=======================================================" -ForegroundColor Green

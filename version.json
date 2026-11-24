@@ -1,6 +1,6 @@
 {
-  "latestVersion": "1.0.0",
-  "mandatory": true,
-  "releaseNotes": "100% native Word fidelity conversion with automatic online updates.",
-  "downloadUrl": "https://github.com/akibsaif39/Docx2PDF/releases/download/v1.0.0/Docx2PDF_Install.exe"
+    "latestVersion":  "1.0.1",
+    "mandatory":  true,
+    "releaseNotes":  "Demo update: Testing live zero-touch background self-update",
+    "downloadUrl":  "https://github.com/akibsaif39/Docx2PDF/releases/download/v1.0.1/Docx2PDF_Install.exe"
 }
