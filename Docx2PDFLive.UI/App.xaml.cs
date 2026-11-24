@@ -1,4 +1,7 @@
+using System;
+using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using Docx2PDFLive.Core.Interop;
 using Docx2PDFLive.Core.Services;
@@ -9,13 +12,14 @@ namespace Docx2PDFLive.UI;
 
 /// <summary>
 /// Interaction logic for App.xaml
-/// Enforces single-instance execution and wakes up the primary instance when clone is clicked.
+/// Enforces single-instance execution, mandatory online auto-updates, and prerequisite detection.
 /// </summary>
 public partial class App : WpfApplication
 {
     private static Mutex? _singleInstanceMutex;
     private static EventWaitHandle? _bringToFrontEvent;
     private static RegisteredWaitHandle? _registeredWait;
+    private static System.Threading.Timer? _backgroundUpdateTimer;
 
     public const string MutexName = @"Local\Docx2PDF_SingleInstance_Mutex_9F842FDEE031";
     public const string EventName = @"Local\Docx2PDF_SingleInstance_Event_9F842FDEE031";
@@ -77,6 +81,25 @@ public partial class App : WpfApplication
         }
         catch { }
 
+        // Online mandatory auto-update check (Option 1: Graceful offline fallback)
+        try
+        {
+            var updateService = new UpdateService();
+            var currentVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+            var updateInfo = Task.Run(() => updateService.CheckForUpdateAsync(currentVersion, timeoutSeconds: 3)).GetAwaiter().GetResult();
+
+            if (updateInfo.IsUpdateAvailable && updateInfo.IsMandatory)
+            {
+                var updateModal = new AutoUpdateWindow(updateInfo, updateService);
+                updateModal.ShowDialog();
+
+                // Shutdown instance so installer can apply files in-place
+                Shutdown();
+                return;
+            }
+        }
+        catch { }
+
         // Mandatory prerequisite check: User must have Microsoft Word or LibreOffice
         var engines = OfficeEngineDetector.GetAvailableEngines();
         if (engines == OfficeEngineType.None)
@@ -98,12 +121,50 @@ public partial class App : WpfApplication
         var mainWindow = new MainWindow();
         MainWindow = mainWindow;
         mainWindow.Show();
+
+        // Start non-intrusive periodic background update timer
+        StartPeriodicUpdateChecks();
+    }
+
+    private void StartPeriodicUpdateChecks()
+    {
+        // First check after 30 minutes, then repeat every 60 minutes
+        _backgroundUpdateTimer = new System.Threading.Timer(async _ =>
+        {
+            try
+            {
+                var updateService = new UpdateService();
+                var currentVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+                var updateInfo = await updateService.CheckForUpdateAsync(currentVersion, timeoutSeconds: 4).ConfigureAwait(false);
+
+                if (updateInfo.IsUpdateAvailable && updateInfo.IsMandatory)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (MainWindow is MainWindow win)
+                        {
+                            // If actively converting, wait until queue is idle before prompting
+                            if (win.IsQueueBusy) return;
+
+                            var updateModal = new AutoUpdateWindow(updateInfo, updateService)
+                            {
+                                Owner = win
+                            };
+                            updateModal.ShowDialog();
+                            Shutdown();
+                        }
+                    });
+                }
+            }
+            catch { }
+        }, null, TimeSpan.FromMinutes(30), TimeSpan.FromHours(1));
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         try
         {
+            _backgroundUpdateTimer?.Dispose();
             _registeredWait?.Unregister(null);
             _bringToFrontEvent?.Dispose();
             if (_singleInstanceMutex != null)

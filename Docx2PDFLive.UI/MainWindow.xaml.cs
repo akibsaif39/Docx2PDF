@@ -17,6 +17,8 @@ public partial class MainWindow : Window
     private bool _isExplicitExit;
     private bool _hasShownBalloon;
 
+    public bool IsQueueBusy => _viewModel.IsQueueBusy;
+
     public MainWindow()
     {
         InitializeComponent();

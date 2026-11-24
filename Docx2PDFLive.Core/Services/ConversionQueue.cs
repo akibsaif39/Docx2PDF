@@ -15,11 +15,14 @@ public class ConversionQueue : IDisposable
     private readonly SemaphoreSlim _concurrencySemaphore;
     private readonly List<Task> _workerTasks = new();
     private int _currentRunId = 1;
+    private int _activeConversions = 0;
     private bool _isPaused;
     private bool _disposed;
 
     public event Action<ConversionItem>? ItemStatusChanged;
     public event Action<bool>? PauseStateChanged;
+
+    public bool IsBusy => _queue.Count > 0 || Volatile.Read(ref _activeConversions) > 0;
 
     public bool IsPaused
     {
@@ -198,14 +201,15 @@ public class ConversionQueue : IDisposable
 
     private async Task ProcessSingleItemAsync(ConversionItem item, CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();
-
-        item.Status = ConversionStatus.Converting;
-        item.Timestamp = DateTime.Now.ToString("HH:mm:ss");
-        ItemStatusChanged?.Invoke(item);
-
+        Interlocked.Increment(ref _activeConversions);
         try
         {
+            token.ThrowIfCancellationRequested();
+
+            item.Status = ConversionStatus.Converting;
+            item.Timestamp = DateTime.Now.ToString("HH:mm:ss");
+            ItemStatusChanged?.Invoke(item);
+
             // Verify file exists and is unlocked (e.g. Word saving)
             var isReady = await WaitForFileReadyAsync(item.FilePath, maxRetries: 4, delayMs: 400, token);
             if (!isReady)
@@ -267,6 +271,10 @@ public class ConversionQueue : IDisposable
             item.ErrorMessage = ex.Message;
             item.Timestamp = DateTime.Now.ToString("HH:mm:ss");
             ItemStatusChanged?.Invoke(item);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeConversions);
         }
     }
 

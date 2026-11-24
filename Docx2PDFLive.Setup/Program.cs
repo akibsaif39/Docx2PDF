@@ -16,8 +16,14 @@ static class Program
     private const string InstallerMutexName = @"Local\Docx2PDF_Installer_SingleInstance_Mutex_9F842FDEE031";
 
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
+        if (args != null && args.Any(a => a.Equals("--silent-update", StringComparison.OrdinalIgnoreCase) || a.Equals("/silent", StringComparison.OrdinalIgnoreCase)))
+        {
+            PerformSilentUpdate();
+            return;
+        }
+
         using var mutex = new Mutex(true, InstallerMutexName, out bool isNewInstance);
         if (!isNewInstance)
         {
@@ -41,6 +47,79 @@ static class Program
         var msiPath = msiCandidates.FirstOrDefault(File.Exists);
 
         Application.Run(new SetupForm(msiPath));
+    }
+
+    private static void PerformSilentUpdate()
+    {
+        try
+        {
+            // 1. Wait for caller (Docx2PDF) to exit so files are unlocked
+            WaitForProcessExit("Docx2PDF", 12000);
+
+            // 2. Extract embedded MSI package
+            var msiPath = ExtractEmbeddedMsi();
+            if (!string.IsNullOrEmpty(msiPath) && File.Exists(msiPath))
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "msiexec.exe",
+                    Arguments = $"/i \"{msiPath}\" /qn REINSTALL=ALL REINSTALLMODE=vomus",
+                    UseShellExecute = true,
+                    Verb = "runas"
+                };
+                using var p = Process.Start(psi);
+                p?.WaitForExit();
+            }
+
+            // 3. Relaunch updated Docx2PDF application
+            var targetExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Docx2PDF", "Docx2PDF.exe");
+            if (!File.Exists(targetExe))
+            {
+                targetExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Docx2PDF", "Docx2PDF.exe");
+            }
+
+            if (File.Exists(targetExe))
+            {
+                Process.Start(new ProcessStartInfo { FileName = targetExe, UseShellExecute = true });
+            }
+        }
+        catch { }
+    }
+
+    private static void WaitForProcessExit(string processName, int timeoutMs)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            var procs = Process.GetProcessesByName(processName);
+            if (procs.Length == 0) return;
+            Thread.Sleep(200);
+        }
+    }
+
+    internal static string? ExtractEmbeddedMsi()
+    {
+        try
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var resourceName = assembly.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith("Docx2PDF_Setup.msi", StringComparison.OrdinalIgnoreCase));
+
+            if (resourceName == null) return null;
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null) return null;
+
+            var tempPath = Path.Combine(Path.GetTempPath(), "Docx2PDF_Setup.msi");
+            using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
+            stream.CopyTo(fileStream);
+
+            return tempPath;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public static bool CheckWordInstalled()
@@ -467,30 +546,7 @@ public class SetupForm : Form
         }
     }
 
-    private static string? ExtractEmbeddedMsi()
-    {
-        try
-        {
-            var assembly = Assembly.GetExecutingAssembly();
-            var resourceName = assembly.GetManifestResourceNames()
-                .FirstOrDefault(n => n.EndsWith("Docx2PDF_Setup.msi", StringComparison.OrdinalIgnoreCase));
-
-            if (resourceName == null) return null;
-
-            using var stream = assembly.GetManifestResourceStream(resourceName);
-            if (stream == null) return null;
-
-            var tempPath = Path.Combine(Path.GetTempPath(), "Docx2PDF_Setup.msi");
-            using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            stream.CopyTo(fileStream);
-
-            return tempPath;
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    private static string? ExtractEmbeddedMsi() => Program.ExtractEmbeddedMsi();
 
     private static async Task<string?> DownloadMsiFromGitHubAsync()
     {

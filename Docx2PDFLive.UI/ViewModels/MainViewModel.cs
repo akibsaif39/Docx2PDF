@@ -63,6 +63,7 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public string ActiveEngineDescription { get; }
     public bool IsLibreOfficeMissing { get; }
+    public bool IsQueueBusy => _queue.IsBusy;
 
     public ICommand SelectFolderCommand { get; }
     public ICommand PauseResumeCommand { get; }

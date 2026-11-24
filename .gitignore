@@ -39,3 +39,5 @@ Installer/Docx2PDF_Setup.msi
 TestResults/
 *.tmp
 *.log
+*.token
+.token

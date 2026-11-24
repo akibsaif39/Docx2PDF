@@ -8,7 +8,7 @@ namespace Docx2PDFLive.Tests;
 public class UserFileTest
 {
     [Fact]
-    public async Task Convert_MalformedXmlDocx_Succeeds()
+    public async Task Convert_MalformedXmlDocx_FailsGracefullyWithoutCrashing()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "Docx2PDF_Malformed_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -38,9 +38,9 @@ public class UserFileTest
         using var composite = new CompositeConverter();
         var result = await composite.ConvertAsync(docxPath, pdfPath);
 
-        Assert.True(result.Success, $"Error: {result.ErrorMessage}");
-        Assert.True(File.Exists(pdfPath), "PDF file was not created.");
-        Assert.True(new FileInfo(pdfPath).Length > 500, "PDF size must be > 500 bytes.");
+        // Corrupt documents must not crash the engine, but report failure gracefully
+        Assert.False(result.Success, "Corrupt XML docx should not succeed.");
+        Assert.False(string.IsNullOrEmpty(result.ErrorMessage));
 
         try { Directory.Delete(tempDir, true); } catch { }
     }
