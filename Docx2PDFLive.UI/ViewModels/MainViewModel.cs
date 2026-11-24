@@ -48,6 +48,15 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
     public string PauseResumeText => IsPaused ? "Resume" : "Pause";
     public string PauseResumeIcon => IsPaused ? "▶" : "⏸";
 
+    public string AppVersionText
+    {
+        get
+        {
+            var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            return ver != null ? $"v{ver.Major}.{ver.Minor}.{ver.Build}" : "v1.0.0";
+        }
+    }
+
     public string StatusSummary
     {
         get => _statusSummary;
