@@ -1,6 +1,6 @@
 {
-    "latestVersion":  "1.0.1",
+    "latestVersion":  "1.0.2",
     "mandatory":  true,
-    "releaseNotes":  "Added \u0027Remember folder on launch\u0027 toggle inside Watching Folder bar, missing-folder fallback notice, LibreOffice concurrency lock, and JobObject/MSI silent auto-updater fixes.",
-    "downloadUrl":  "https://github.com/akibsaif39/Docx2PDF/releases/download/v1.0.1/Docx2PDF_Install.exe"
+    "releaseNotes":  "Dummy test update v1.0.2: Verifying seamless v1.0.1 -\u003e v1.0.2 auto-update, instant background exit, and automatic relaunch.",
+    "downloadUrl":  "https://github.com/akibsaif39/Docx2PDF/releases/download/v1.0.2/Docx2PDF_Install.exe"
 }

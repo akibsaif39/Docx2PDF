@@ -173,6 +173,11 @@ public partial class MainWindow : Window
         Focus();
     }
 
+    public void PrepareForShutdown()
+    {
+        _isExplicitExit = true;
+    }
+
     private void ExitApplication()
     {
         _isExplicitExit = true;

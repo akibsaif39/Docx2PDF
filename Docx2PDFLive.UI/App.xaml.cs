@@ -153,6 +153,7 @@ public partial class App : WpfApplication
                                 updateModal.Owner = win;
                             }
                             updateModal.ShowDialog();
+                            win.PrepareForShutdown();
                             ReleaseSingleInstanceResources();
                             Shutdown();
                         }
