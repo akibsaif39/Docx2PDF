@@ -8,6 +8,7 @@ public class LibreOfficeConverter : IConverter
 {
     private readonly string _sofficePath;
     private readonly TimeSpan _timeout;
+    private static readonly SemaphoreSlim ProfileLock = new(1, 1);
     private static readonly string PersistentProfileDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Docx2PDF",
@@ -57,31 +58,32 @@ public class LibreOfficeConverter : IConverter
         }
         catch { }
 
-        if (!Directory.Exists(PersistentProfileDir))
-        {
-            Directory.CreateDirectory(PersistentProfileDir);
-        }
-        var profileUri = "file:///" + PersistentProfileDir.Replace('\\', '/');
-
-        var args = $"-env:UserInstallation=\"{profileUri}\" --headless --convert-to pdf \"{docxPath}\" --outdir \"{outDir}\"";
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = _sofficePath,
-            Arguments = args,
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = outDir
-        };
-
-        // Prevent external Python environment variables from interfering with LibreOffice's internal Python runtime
-        psi.EnvironmentVariables.Remove("PYTHONHOME");
-        psi.EnvironmentVariables.Remove("PYTHONPATH");
-
+        await ProfileLock.WaitAsync(cancellationToken);
         try
         {
+            if (!Directory.Exists(PersistentProfileDir))
+            {
+                Directory.CreateDirectory(PersistentProfileDir);
+            }
+            var profileUri = "file:///" + PersistentProfileDir.Replace('\\', '/');
+
+            var args = $"-env:UserInstallation=\"{profileUri}\" --headless --convert-to pdf \"{docxPath}\" --outdir \"{outDir}\"";
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = _sofficePath,
+                Arguments = args,
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                WorkingDirectory = outDir
+            };
+
+            // Prevent external Python environment variables from interfering with LibreOffice's internal Python runtime
+            psi.EnvironmentVariables.Remove("PYTHONHOME");
+            psi.EnvironmentVariables.Remove("PYTHONPATH");
+
             using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
             if (!process.Start())
@@ -144,6 +146,10 @@ public class LibreOfficeConverter : IConverter
 
             return ConversionResult.Fail(Name, errorDetail, sw.ElapsedMilliseconds);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             sw.Stop();
@@ -151,6 +157,7 @@ public class LibreOfficeConverter : IConverter
         }
         finally
         {
+            ProfileLock.Release();
         }
     }
 }

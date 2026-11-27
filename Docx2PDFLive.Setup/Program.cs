@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Net.Http;
 using System.Reflection;
+using System.Security.Principal;
 using System.Windows.Forms;
 using Microsoft.Win32;
 using Docx2PDFLive.Core.Services;
@@ -49,41 +50,139 @@ static class Program
         Application.Run(new SetupForm(msiPath));
     }
 
-    private static void PerformSilentUpdate()
+    private static bool IsAdministrator()
     {
         try
         {
-            // 1. Wait for caller (Docx2PDF) to exit so files are unlocked
-            WaitForProcessExit("Docx2PDF", 12000);
+            using var identity = WindowsIdentity.GetCurrent();
+            var principal = new WindowsPrincipal(identity);
+            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
-            // 2. Extract embedded MSI package
-            var msiPath = ExtractEmbeddedMsi();
-            if (!string.IsNullOrEmpty(msiPath) && File.Exists(msiPath))
+    private static void WriteUpdateLog(string message)
+    {
+        try
+        {
+            var logFile = Path.Combine(Path.GetTempPath(), "Docx2PDF_Update.log");
+            File.AppendAllText(logFile, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+        }
+        catch { }
+    }
+
+    private static void PerformSilentUpdate()
+    {
+        string? tempMsiPath = null;
+        try
+        {
+            WriteUpdateLog("Starting silent update...");
+
+            // 1. Wait for caller (Docx2PDF) to exit so files and mutex are unlocked
+            WaitForProcessExit("Docx2PDF", 15000);
+            Thread.Sleep(400);
+
+            // 2. Extract embedded MSI package to a unique path to avoid stale temp file locks
+            tempMsiPath = ExtractEmbeddedMsi(uniqueFileName: true);
+            WriteUpdateLog($"Extracted MSI path: {tempMsiPath ?? "(null)"}");
+
+            if (!string.IsNullOrEmpty(tempMsiPath) && File.Exists(tempMsiPath))
             {
+                var msiLogPath = Path.Combine(Path.GetTempPath(), "Docx2PDF_msi_update.log");
+                var elevated = IsAdministrator();
+
+                // MajorUpgrade changes ProductCode per version, so never pass REINSTALL=ALL (which causes MSI error 1625)
                 var psi = new ProcessStartInfo
                 {
                     FileName = "msiexec.exe",
-                    Arguments = $"/i \"{msiPath}\" /qn REINSTALL=ALL REINSTALLMODE=vomus",
-                    UseShellExecute = true,
-                    Verb = "runas"
+                    Arguments = $"/i \"{tempMsiPath}\" /qn /norestart /l*v \"{msiLogPath}\"",
+                    UseShellExecute = !elevated,
+                    CreateNoWindow = elevated
                 };
+                if (!elevated)
+                {
+                    psi.Verb = "runas";
+                }
+
+                WriteUpdateLog($"Launching msiexec (elevated={elevated}): {psi.Arguments}");
                 using var p = Process.Start(psi);
                 p?.WaitForExit();
+                WriteUpdateLog($"msiexec exited with code: {p?.ExitCode}");
+
+                // If silent MSI failed (e.g., policy blocked /qn), fall back to standard interactive UI install
+                if (p != null && p.ExitCode != 0 && p.ExitCode != 1602)
+                {
+                    var fallbackPsi = new ProcessStartInfo
+                    {
+                        FileName = "msiexec.exe",
+                        Arguments = $"/i \"{tempMsiPath}\" /l*v \"{msiLogPath}\"",
+                        UseShellExecute = true
+                    };
+                    if (!elevated) fallbackPsi.Verb = "runas";
+                    using var fallbackProc = Process.Start(fallbackPsi);
+                    fallbackProc?.WaitForExit();
+                    WriteUpdateLog($"Fallback interactive msiexec exited with code: {fallbackProc?.ExitCode}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteUpdateLog($"Silent update error: {ex}");
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(tempMsiPath) && File.Exists(tempMsiPath))
+            {
+                try { File.Delete(tempMsiPath); } catch { }
             }
 
-            // 3. Relaunch updated Docx2PDF application
+            // 3. Always relaunch Docx2PDF application cleanly
+            RelaunchInstalledApp();
+        }
+    }
+
+    private static void RelaunchInstalledApp()
+    {
+        try
+        {
             var targetExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Docx2PDF", "Docx2PDF.exe");
             if (!File.Exists(targetExe))
             {
                 targetExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Docx2PDF", "Docx2PDF.exe");
             }
 
-            if (File.Exists(targetExe))
+            WriteUpdateLog($"Relaunching target executable: {targetExe} (exists={File.Exists(targetExe)})");
+            if (!File.Exists(targetExe)) return;
+
+            if (IsAdministrator())
             {
-                Process.Start(new ProcessStartInfo { FileName = targetExe, UseShellExecute = true });
+                // Launch through Windows Explorer so Docx2PDF runs de-elevated at standard user privilege
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        Arguments = $"\"{targetExe}\"",
+                        UseShellExecute = true
+                    });
+                    return;
+                }
+                catch { }
             }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = targetExe,
+                UseShellExecute = true
+            });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            WriteUpdateLog($"Relaunch error: {ex}");
+        }
     }
 
     private static void WaitForProcessExit(string processName, int timeoutMs)
@@ -95,9 +194,23 @@ static class Program
             if (procs.Length == 0) return;
             Thread.Sleep(200);
         }
+
+        // Ensure stale caller processes do not block MSI file replacement
+        foreach (var proc in Process.GetProcessesByName(processName))
+        {
+            try
+            {
+                if (!proc.HasExited)
+                {
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(3000);
+                }
+            }
+            catch { }
+        }
     }
 
-    internal static string? ExtractEmbeddedMsi()
+    internal static string? ExtractEmbeddedMsi(bool uniqueFileName = false)
     {
         try
         {
@@ -110,14 +223,18 @@ static class Program
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream == null) return null;
 
-            var tempPath = Path.Combine(Path.GetTempPath(), "Docx2PDF_Setup.msi");
+            var fileName = uniqueFileName
+                ? $"Docx2PDF_Setup_{Guid.NewGuid():N}.msi"
+                : "Docx2PDF_Setup.msi";
+            var tempPath = Path.Combine(Path.GetTempPath(), fileName);
             using var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
             stream.CopyTo(fileStream);
 
             return tempPath;
         }
-        catch
+        catch (Exception ex)
         {
+            WriteUpdateLog($"ExtractEmbeddedMsi error: {ex}");
             return null;
         }
     }

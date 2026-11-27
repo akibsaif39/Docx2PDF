@@ -1,6 +1,6 @@
 {
     "latestVersion":  "1.0.1",
     "mandatory":  true,
-    "releaseNotes":  "Added \u0027Remember folder on launch\u0027 checkbox inside the Watching Folder bar so Docx2PDF remembers your last folder automatically (or uncheck to choose a folder on every launch), plus friendly missing-folder fallback notice.",
+    "releaseNotes":  "Added \u0027Remember folder on launch\u0027 checkbox inside the Watching Folder bar so Docx2PDF remembers your last folder automatically (or uncheck to choose a folder on every launch), plus friendly missing-folder fallback notice and silent-updater relaunch fixes.",
     "downloadUrl":  "https://github.com/akibsaif39/Docx2PDF/releases/download/v1.0.1/Docx2PDF_Install.exe"
 }

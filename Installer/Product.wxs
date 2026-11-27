@@ -4,7 +4,8 @@
            Version="1.0.1"
            UpgradeCode="4C6F4B72-6893-4E9A-B7F1-3BC8F29A88F1"
            Scope="perMachine">
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="AppIcon" SourceFile="app.ico" />

@@ -93,7 +93,8 @@ public partial class App : WpfApplication
                 var updateModal = new AutoUpdateWindow(updateInfo, updateService);
                 updateModal.ShowDialog();
 
-                // Shutdown instance so installer can apply files in-place
+                // Shutdown instance so installer can apply files in-place cleanly
+                ReleaseSingleInstanceResources();
                 Shutdown();
                 return;
             }
@@ -146,11 +147,13 @@ public partial class App : WpfApplication
                             // If actively converting, wait until queue is idle before prompting
                             if (win.IsQueueBusy) return;
 
-                            var updateModal = new AutoUpdateWindow(updateInfo, updateService)
+                            var updateModal = new AutoUpdateWindow(updateInfo, updateService);
+                            if (win.IsVisible)
                             {
-                                Owner = win
-                            };
+                                updateModal.Owner = win;
+                            }
                             updateModal.ShowDialog();
+                            ReleaseSingleInstanceResources();
                             Shutdown();
                         }
                     });
@@ -160,21 +163,29 @@ public partial class App : WpfApplication
         }, null, TimeSpan.FromMinutes(30), TimeSpan.FromHours(1));
     }
 
-    protected override void OnExit(ExitEventArgs e)
+    private void ReleaseSingleInstanceResources()
     {
         try
         {
             _backgroundUpdateTimer?.Dispose();
+            _backgroundUpdateTimer = null;
             _registeredWait?.Unregister(null);
+            _registeredWait = null;
             _bringToFrontEvent?.Dispose();
+            _bringToFrontEvent = null;
             if (_singleInstanceMutex != null)
             {
                 _singleInstanceMutex.ReleaseMutex();
                 _singleInstanceMutex.Dispose();
+                _singleInstanceMutex = null;
             }
         }
         catch { }
+    }
 
+    protected override void OnExit(ExitEventArgs e)
+    {
+        ReleaseSingleInstanceResources();
         base.OnExit(e);
     }
 }
