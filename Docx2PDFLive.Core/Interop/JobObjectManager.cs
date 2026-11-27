@@ -61,9 +61,9 @@ public static class JobObjectManager
                     Marshal.FreeHGlobal(extendedLimitsPtr);
                 }
 
-                // Assign the current Docx2PDF process to the job
-                using var currentProcess = Process.GetCurrentProcess();
-                AssignProcess(currentProcess.Handle);
+                // Keep _jobHandle open in this process without assigning Docx2PDF itself to the job.
+                // Only explicitly assigned worker processes (WINWORD.EXE, soffice.exe) enter the job,
+                // so unrelated detached launches (such as the auto-updater) survive Docx2PDF exit.
             }
             catch (Exception ex)
             {
@@ -105,6 +105,19 @@ public static class JobObjectManager
         }
         catch { }
         return false;
+    }
+
+    public static bool IsProcessAssigned(Process process)
+    {
+        try
+        {
+            if (_jobHandle == IntPtr.Zero || process.HasExited) return false;
+            return IsProcessInJob(process.Handle, _jobHandle, out bool inJob) && inJob;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     #region Win32 API Definitions
@@ -164,6 +177,9 @@ public static class JobObjectManager
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool IsProcessInJob(IntPtr hProcess, IntPtr hJob, out bool result);
 
     #endregion
 }

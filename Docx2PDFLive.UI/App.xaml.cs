@@ -74,13 +74,6 @@ public partial class App : WpfApplication
         }
         catch { }
 
-        try
-        {
-            // Initialize Windows Job Object with KILL_ON_JOB_CLOSE to guarantee zero ghost processes
-            JobObjectManager.InitializeGlobalJobObject();
-        }
-        catch { }
-
         // Online mandatory auto-update check (Option 1: Graceful offline fallback)
         try
         {
@@ -98,6 +91,13 @@ public partial class App : WpfApplication
                 Shutdown();
                 return;
             }
+        }
+        catch { }
+
+        try
+        {
+            // Initialize Windows Job Object with KILL_ON_JOB_CLOSE to guarantee zero ghost worker processes
+            JobObjectManager.InitializeGlobalJobObject();
         }
         catch { }
 
