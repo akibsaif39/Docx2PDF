@@ -87,6 +87,67 @@
             </Setter>
         </Style>
 
+        <!-- Dark CheckBox Style -->
+        <Style x:Key="DarkCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#CBD5E1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="pill"
+                                Background="#0F172A"
+                                BorderBrush="#334155"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="8,4">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border x:Name="box"
+                                        Width="16"
+                                        Height="16"
+                                        CornerRadius="4"
+                                        Background="#1E293B"
+                                        BorderBrush="#475569"
+                                        BorderThickness="1.2"
+                                        Margin="0,0,8,0"
+                                        VerticalAlignment="Center">
+                                    <Path x:Name="checkMark"
+                                          Data="M 3,7.5 L 6.2,10.8 L 12,4.2"
+                                          Stroke="White"
+                                          StrokeThickness="2"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round"
+                                          Visibility="Collapsed"/>
+                                </Border>
+                                <ContentPresenter VerticalAlignment="Center"
+                                                  RecognizesAccessKey="True"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="box" Property="Background" Value="#2563EB"/>
+                                <Setter TargetName="box" Property="BorderBrush" Value="#3B82F6"/>
+                                <Setter TargetName="pill" Property="BorderBrush" Value="#2563EB"/>
+                                <Setter TargetName="checkMark" Property="Visibility" Value="Visible"/>
+                                <Setter Property="Foreground" Value="#F8FAFC"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="pill" Property="Background" Value="#172554"/>
+                                <Setter TargetName="box" Property="BorderBrush" Value="#60A5FA"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Status Badge Style converter/template -->
         <DataTemplate x:Key="StatusCellTemplate">
             <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">
@@ -221,9 +282,17 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Watching Folder:" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,8,0" FontSize="12"/>
-                        <TextBlock Grid.Column="1" Text="{Binding WatchedPath}" Foreground="#38BDF8" TextTrimming="CharacterEllipsis" FontSize="12"/>
+                        <TextBlock Grid.Column="0" Text="Watching Folder:" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,8,0" FontSize="12" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding WatchedPath}" Foreground="#38BDF8" TextTrimming="CharacterEllipsis" FontSize="12" VerticalAlignment="Center"/>
+                        <CheckBox Grid.Column="2"
+                                  Content="Remember folder on launch"
+                                  IsChecked="{Binding RememberLastFolder, Mode=TwoWay}"
+                                  Style="{StaticResource DarkCheckBoxStyle}"
+                                  ToolTip="When checked, Docx2PDF automatically resumes watching this folder next time it starts. Uncheck to choose a folder on every launch."
+                                  Margin="14,0,0,0"
+                                  VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
             </StackPanel>

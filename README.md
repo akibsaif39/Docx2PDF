@@ -24,6 +24,7 @@
 - **Mandatory Prerequisite Gate**: Verifies at launch that either Microsoft Word or LibreOffice is installed. If neither is detected, a clean setup modal guides the user to install LibreOffice with a single click.
 - **Standalone Single-File Architecture**: Self-extracting compressed single binary (`Docx2PDF.exe`) with zero external DLL requirements.
 - **Zero-Touch Online Auto-Updater**: Automatically checks for updates and upgrades seamlessly with zero user effort. Offline launch is fully supported with a non-blocking graceful fallback so conversions can continue anytime.
+- **Smart Startup Folder Memory**: Toggle **"Remember folder on launch"** right inside the app to auto-resume your last watched folder or uncheck it to pick a folder on every launch.
 - **Live Real-Time Monitoring**: Automatically detects added, modified, or renamed Word documents across nested subdirectories.
 - **Background Tray Mode**: Minimizing or closing `Docx2PDF` hides it directly into the Windows System Tray, continuing conversions quietly in the background without cluttering your taskbar.
 - **Single-Instance Protection**: Clicking the app shortcut while it is already running automatically unhides and brings the existing window to the foreground, preventing duplicate processes.

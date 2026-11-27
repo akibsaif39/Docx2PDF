@@ -17,7 +17,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly ConversionQueue _queue;
     private readonly FolderWatcherService _watcherService;
+    private readonly AppSettingsService _settingsService;
     private string? _watchedPath;
+    private bool _rememberLastFolder;
     private bool _isPaused;
     private string _statusSummary = "Idle - Select a folder to begin";
     private bool _disposed;
@@ -29,6 +31,20 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         : _watchedPath;
 
     public bool HasWatchedFolder => !string.IsNullOrEmpty(_watchedPath);
+
+    public bool RememberLastFolder
+    {
+        get => _rememberLastFolder;
+        set
+        {
+            if (_rememberLastFolder != value)
+            {
+                _rememberLastFolder = value;
+                OnPropertyChanged();
+                PersistSettings();
+            }
+        }
+    }
 
     public bool IsPaused
     {
@@ -83,6 +99,9 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public MainViewModel()
     {
+        _settingsService = new AppSettingsService();
+        _rememberLastFolder = _settingsService.Load().RememberLastFolder;
+
         var fastest = OfficeEngineDetector.GetFastestAvailableEngine();
         ActiveEngineDescription = fastest == OfficeEngineType.MicrosoftWord
             ? "Microsoft Word (Native High-Speed)"
@@ -105,6 +124,38 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         GetLibreOfficeCommand = new RelayCommand(LibreOfficeDetector.OpenDownloadPage);
     }
 
+    public void InitializeFolderOnStartup()
+    {
+        var saved = _settingsService.Load();
+        _rememberLastFolder = saved.RememberLastFolder;
+        OnPropertyChanged(nameof(RememberLastFolder));
+
+        var resolution = AppSettingsService.ResolveStartupFolder(saved);
+        switch (resolution.Action)
+        {
+            case StartupFolderAction.AutoResumeFolder:
+                StartWatchingFolder(resolution.FolderPath!);
+                return;
+
+            case StartupFolderAction.MissingRememberedFolderPrompt:
+                MessageBox.Show(
+                    $"Previously watched folder was not found:\n{resolution.FolderPath}\n\nPlease select a folder to continue watching.",
+                    "Docx2PDF",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                // Clear the missing folder so canceling does not repeat the same warning on next launch
+                _settingsService.Save(new AppSettings
+                {
+                    RememberLastFolder = _rememberLastFolder,
+                    LastWatchedFolder = null
+                });
+                break;
+        }
+
+        PromptSelectFolder();
+    }
+
     public void PromptSelectFolder()
     {
         try
@@ -114,6 +165,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
                 Title = "Select Root Folder to Watch for DOCX Files",
                 Multiselect = false
             };
+
+            if (HasWatchedFolder && Directory.Exists(_watchedPath))
+            {
+                dialog.InitialDirectory = _watchedPath;
+            }
 
             if (dialog.ShowDialog() == true)
             {
@@ -140,6 +196,11 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
         _watchedPath = folderPath;
         OnPropertyChanged(nameof(WatchedPath));
         OnPropertyChanged(nameof(HasWatchedFolder));
+
+        if (_rememberLastFolder)
+        {
+            PersistSettings();
+        }
 
         // Clear UI items from previous folder
         SafeInvoke(() =>
@@ -244,6 +305,17 @@ public class MainViewModel : INotifyPropertyChanged, IDisposable
             }
             catch { }
         }
+    }
+
+    private void PersistSettings()
+    {
+        _settingsService.Save(new AppSettings
+        {
+            RememberLastFolder = _rememberLastFolder,
+            LastWatchedFolder = _rememberLastFolder && !string.IsNullOrEmpty(_watchedPath) && Directory.Exists(_watchedPath)
+                ? _watchedPath
+                : null
+        });
     }
 
     private static void SafeInvoke(Action action)

@@ -60,9 +60,8 @@ public partial class MainWindow : Window
         }
         else
         {
-            // Prompt user to select root folder every time the app opens
-            // Never saving or restoring previously watched folder paths
-            _viewModel.PromptSelectFolder();
+            // Auto-resume last remembered folder if enabled and still present; otherwise prompt
+            _viewModel.InitializeFolderOnStartup();
         }
     }
 
