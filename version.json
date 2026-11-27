@@ -1,6 +1,6 @@
 {
-    "latestVersion":  "1.0.2",
-    "mandatory":  true,
-    "releaseNotes":  "Dummy test update v1.0.2: Verifying seamless v1.0.1 -\u003e v1.0.2 auto-update, instant background exit, and automatic relaunch.",
-    "downloadUrl":  "https://github.com/akibsaif39/Docx2PDF/releases/download/v1.0.2/Docx2PDF_Install.exe"
+  "latestVersion": "1.0.0",
+  "mandatory": true,
+  "releaseNotes": "Official release of Docx2PDF with 100% native Word fidelity, smart folder memory, and automatic online updates.",
+  "downloadUrl": "https://github.com/akibsaif39/Docx2PDF/releases/download/v1.0.0/Docx2PDF_Install.exe"
 }

@@ -1,7 +1,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Docx2PDF"
            Manufacturer="Akib"
-           Version="1.0.2"
+           Version="1.0.0"
            UpgradeCode="4C6F4B72-6893-4E9A-B7F1-3BC8F29A88F1"
            Scope="perMachine">
     <MajorUpgrade AllowSameVersionUpgrades="yes"
